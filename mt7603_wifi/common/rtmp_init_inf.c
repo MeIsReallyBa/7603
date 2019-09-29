@@ -131,10 +131,6 @@ INT rtmp_sys_init(RTMP_ADAPTER *pAd)
 	}
 
 
-#ifdef WH_EZ_SETUP
-		pAd->CurWdevIdx = 0;
-#endif
-
 	return TRUE;
 
 err:
@@ -157,9 +153,7 @@ INT rtmp_cfg_init(RTMP_ADAPTER *pAd, RTMP_STRING *pHostName)
 	NDIS_STATUS status;
 
 	UserCfgInit(pAd);
-#ifdef MBO_SUPPORT
-	MboInit(pAd);
-#endif/* MBO_SUPPORT */
+
 
 	CfgInitHook(pAd);
 
@@ -228,8 +222,13 @@ int rt28xx_init(VOID *pAdSrc, RTMP_STRING *pDefaultMac, RTMP_STRING *pHostName)
 	}
 #endif /* MT_MAC */
 
-	DBGPRINT(RT_DEBUG_TRACE, ("MAC[Ver:Rev=0x%08x : 0x%08x]\n",
+#ifdef MT_MAC
+	DBGPRINT(RT_DEBUG_OFF, ("MAC [Ver: 0x%08x, Rev: 0x%08x]\n",
+				pAd->ChipID, pAd->HWVersion));
+#else
+	DBGPRINT(RT_DEBUG_OFF, ("MAC [Ver: 0x%08x, Rev: 0x%08x]\n",
 				pAd->MACVersion, pAd->ChipID));
+#endif
 
 	/* TxS Setting */
 	InitTxSTypeTable(pAd);
@@ -273,14 +272,12 @@ int rt28xx_init(VOID *pAdSrc, RTMP_STRING *pDefaultMac, RTMP_STRING *pHostName)
 	if (rtmp_cfg_init(pAd, pHostName) != TRUE)
 		goto err5;
 
-	pAd->LowerMcsValue = 0; //Set to default
-	pAd->HigherMcsValue = 0; //Set to default
 
 	if (MCUSysInit(pAd) != NDIS_STATUS_SUCCESS)
 		goto err6;
 
 	/* hook e2p operation */
-	RtmpChipOpsEepromHook(pAd, pAd->infType,E2P_NONE);
+	RtmpChipOpsEepromHook(pAd, pAd->infType, E2P_NONE);
 
 #if defined(MT7603_FPGA) || defined(MT7628_FPGA)
 	if (pAd->chipCap.hif_type == HIF_MT) {
@@ -324,6 +321,7 @@ int rt28xx_init(VOID *pAdSrc, RTMP_STRING *pDefaultMac, RTMP_STRING *pHostName)
 	RTMP_NET_DEV_NICKNAME_INIT(pAd);
 
 #ifdef SMART_CARRIER_SENSE_SUPPORT
+	BssTableInit(&pAd->SCSCtrl.SCSBssTab);
 	/* Backup CR_AGC_0 & CR_AGC_3 value */
 	RTMP_IO_READ32(pAd, CR_AGC_0, &pAd->SCSCtrl.CR_AGC_0_default);
 	RTMP_IO_READ32(pAd, CR_AGC_3, &pAd->SCSCtrl.CR_AGC_3_default);
@@ -518,12 +516,12 @@ int rt28xx_init(VOID *pAdSrc, RTMP_STRING *pDefaultMac, RTMP_STRING *pHostName)
 			RTMP_IRQ_ENABLE(pAd);
 
 #ifdef LOAD_FW_ONE_TIME
-        {
-                UINT32 value;
-                RTMP_IO_READ32(pAd, AGG_TEMP, &value);
-                value &= 0x0000ffff;
-                RTMP_IO_WRITE32(pAd, AGG_TEMP, value);
-        }
+	{
+		UINT32 value;
+		RTMP_IO_READ32(pAd, AGG_TEMP, &value);
+		value &= 0x0000ffff;
+		RTMP_IO_WRITE32(pAd, AGG_TEMP, value);
+	}
 #endif /* LOAD_FW_ONE_TIME */
 
 #endif /* RTMP_MAC_PCI */
@@ -575,14 +573,6 @@ int rt28xx_init(VOID *pAdSrc, RTMP_STRING *pDefaultMac, RTMP_STRING *pHostName)
 #ifdef USB_IOT_WORKAROUND2
 	pAd->bUSBIOTReady = TRUE;
 #endif
-
-#ifdef MIXMODE_SUPPORT
-	MixModeInit(pAd);
-#endif
-#ifdef MAC_REPEATER_SUPPORT
-	if(pAd->ApCfg.bMACRepeaterEn)
-		AsicSetMacAddrExt(pAd, TRUE);
-#endif /*MAC_REPEATER_SUPPORT*/
 
 	DBGPRINT_S(("<==== rt28xx_init, Status=%x\n", Status));
 
@@ -712,10 +702,10 @@ VOID RTMPDrvOpen(VOID *pAdSrc)
 			pWpsCtrl->pAd = pAd;
 			NdisZeroMemory(pWpsCtrl->EntryAddr, MAC_ADDR_LEN);
 #ifdef WSC_V2_SUPPORT
-			pWpsCtrl->WscConfigMethods= 0x278C;
-#else
+			pWpsCtrl->WscConfigMethods= 0x238C;
+#else /* WSC_V2_SUPPORT */
 			pWpsCtrl->WscConfigMethods= 0x018C;
-#endif /* WSC_V2_SUPPORT */
+#endif /* !WSC_V2_SUPPORT */
 			RTMP_AP_IoctlHandle(pAd, NULL, CMD_RTPRIV_IOCTL_WSC_INIT, 0, (VOID *)&pAd->ApCfg.ApCliTab[index], index);
 		}
 #endif /* APCLI_SUPPORT */
@@ -743,35 +733,24 @@ VOID RTMPDrvOpen(VOID *pAdSrc)
 
 #endif
 
-	if (pAd->ed_th >= NON_CE_REGION_MAX_ED_TH) {/*original ED flow*/
-		/* Only turn EDCCA on in CE region */
+#ifdef ED_MONITOR
+	/* Only turn EDCCA on in CE region */
+	{
 		BOOLEAN bEdcca = FALSE;
-
 		bEdcca = GetEDCCASupport(pAd);
-		if (bEdcca) {
-			/*pAd->ed_current_region_is_CE = TRUE;*/
+		if (bEdcca)
+		{
+			//pAd->ed_current_region_is_CE = TRUE;
 			ed_monitor_init(pAd);		
-		} else
+		}
+		else
+		{
 			ed_monitor_exit(pAd);
-	} else
-		ed_monitor_init(pAd);/*false enable edcca for all region*/
-
-#ifdef BAND_STEERING
-#ifdef CONFIG_AP_SUPPORT
-    if(pAd->ApCfg.BandSteering)
-    {
-        PBND_STRG_CLI_TABLE table;
-        table = Get_BndStrgTable(pAd, BSS0);
-        if(table)
-        {
-            /* Inform daemon interface ready */
-            struct wifi_dev *wdev = &pAd->ApCfg.MBSSID[BSS0].wdev;
-            BndStrg_SetInfFlags(pAd, wdev, table, TRUE);
-        }
-    }
-#endif /* CONFIG_AP_SUPPORT */
-#endif /* BAND_STEERING */
-	
+		}
+	}
+#else
+	RTMP_CHIP_ASIC_SET_EDCCA(pAd, FALSE);
+#endif /* ED_MONITOR */
 }
 
 
@@ -828,6 +807,8 @@ VOID RTMPDrvClose(VOID *pAdSrc, VOID *net_dev)
 	WdsDown(pAd);
 #endif /* WDS_SUPPORT */
 
+	RtmpOsMsDelay(30); /* wait for disconnect requests transmitted */
+
 	for (i = 0 ; i < NUM_OF_TX_RING; i++)
 	{
 		while (pAd->DeQueueRunning[i] == TRUE)
@@ -878,12 +859,6 @@ VOID RTMPDrvClose(VOID *pAdSrc, VOID *net_dev)
 
 		/* Shutdown Access Point function, release all related resources */
 		APShutdown(pAd);
-
-/*#ifdef AUTO_CH_SELECT_ENHANCE*/
-		/* Free BssTab & ChannelInfo tabbles.*/
-/*		AutoChBssTableDestroy(pAd); */
-/*		ChannelInfoDestroy(pAd); */
-/*#endif  AUTO_CH_SELECT_ENHANCE */
 	}
 #endif /* CONFIG_AP_SUPPORT */
 
@@ -915,11 +890,13 @@ VOID RTMPDrvClose(VOID *pAdSrc, VOID *net_dev)
 
 #ifdef RTMP_MAC_PCI
 	{
-		RTMPDisableRxTx(pAd);
 		{
 			if (RTMP_TEST_FLAG(pAd, fRTMP_ADAPTER_INTERRUPT_ACTIVE))
 			{
-				DISABLE_TX_RX(pAd, RTMP_HALT);
+				if (pAd->chipCap.hif_type == HIF_MT)
+				    RTMPDisableRxTx(pAd);
+				else
+				    DISABLE_TX_RX(pAd, RTMP_HALT);
 				RTMP_ASIC_INTERRUPT_DISABLE(pAd);
 			}
 		}
@@ -1010,7 +987,7 @@ VOID RTMPDrvClose(VOID *pAdSrc, VOID *net_dev)
 	NdisZeroMemory(&pAd->MacTab, sizeof(MAC_TABLE));
 
 	/* release all timers */
-	RtmpusecDelay(2000);
+	RtmpusecDelay(3000);
 	RTMP_AllTimerListRelease(pAd);
 
 #ifdef RTMP_TIMER_TASK_SUPPORT
@@ -1029,6 +1006,7 @@ VOID RTMPDrvClose(VOID *pAdSrc, VOID *net_dev)
 VOID RTMPInfClose(VOID *pAdSrc)
 {
 	RTMP_ADAPTER *pAd = (RTMP_ADAPTER *)pAdSrc;
+
 #ifdef CONFIG_AP_SUPPORT
 	pAd->ApCfg.MBSSID[MAIN_MBSSID].bcn_buf.bBcnSntReq = FALSE;
 
@@ -1041,18 +1019,6 @@ VOID RTMPInfClose(VOID *pAdSrc)
 	//CFG_TODO
 	APMakeAllBssBeacon(pAd);
 	APUpdateAllBeaconFrame(pAd);
-#ifdef BAND_STEERING
-    if(pAd->ApCfg.BandSteering)
-    {
-        PBND_STRG_CLI_TABLE table;
-        table = Get_BndStrgTable(pAd, BSS0);
-        if(table)
-        {
-            /* Inform daemon interface down */
-            BndStrg_SetInfFlags(pAd, &pAd->ApCfg.MBSSID[BSS0].wdev, table, FALSE);
-        }
-    }
-#endif /* BAND_STEERING */
 #endif /* CONFIG_AP_SUPPORT */
 
 

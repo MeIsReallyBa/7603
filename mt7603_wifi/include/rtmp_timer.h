@@ -137,9 +137,8 @@ DECLARE_TIMER_FUNCTION(PMF_SAQueryConfirmTimeOut);
 
 
 #ifdef CONFIG_AP_SUPPORT
-DECLARE_TIMER_FUNCTION(APDetectOverlappingExec);
-
 #ifdef DOT11N_DRAFT3
+DECLARE_TIMER_FUNCTION(APDetectOverlappingExec);
 DECLARE_TIMER_FUNCTION(Bss2040CoexistTimeOut);
 #endif /* DOT11N_DRAFT3 */
 
@@ -198,24 +197,9 @@ DECLARE_TIMER_FUNCTION(PostReplyTimeout);
 DECLARE_TIMER_FUNCTION(ATEPeriodicExec);
 #endif /* CONFIG_ATE */
 
-#ifdef WH_EZ_SETUP
-DECLARE_TIMER_FUNCTION(ez_scan_timeout);
-//DECLARE_TIMER_FUNCTION(ez_stop_scan_timeout);
-DECLARE_TIMER_FUNCTION(ez_scan_pause_timeout);
-#ifdef EZ_NETWORK_MERGE_SUPPORT
-DECLARE_TIMER_FUNCTION(ez_group_merge_timeout);
-#endif
-#ifdef NEW_CONNECTION_ALGO
-DECLARE_TIMER_FUNCTION(ez_wait_for_connection_allow_timeout);
-#endif
-#ifdef EZ_DUAL_BAND_SUPPORT
-DECLARE_TIMER_FUNCTION(ez_loop_chk_timeout);
-#endif
-#endif /* WH_EZ_SETUP */
-
-#ifdef MIXMODE_SUPPORT
-DECLARE_TIMER_FUNCTION(MixModeTimeout);
-#endif
+#ifdef APCLI_SUPPORT
+DECLARE_TIMER_FUNCTION(ApCliWpaDisassocApAndBlockAssoc);
+#endif /* APCLI_SUPPORT */
 
 #endif /* __RTMP_TIMER_H__ */
 

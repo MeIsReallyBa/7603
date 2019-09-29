@@ -82,8 +82,4 @@
 #define RTPRIV_IOCTL_WSC_CALLBACK	(SIOCIWFIRSTPRIV + 0x1A)
 #endif /* CONFIG_AP_SUPPORT */
 
-#ifdef WH_EZ_SETUP
-#define RTPRIV_IOCTL_GEZ_SCAN_TABLE					(SIOCIWFIRSTPRIV + 0x1D)
-#endif /* WH_EZ_SETUP */
-
 #endif /* _RT_OS_H_ */

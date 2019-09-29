@@ -139,6 +139,9 @@ VOID ApCliAssocStateMachineInit(
 		RTMPInitTimer(pAd, &pAd->ApCfg.ApCliTab[i].MlmeAux.ApCliAssocTimer,
 						GET_TIMER_FUNCTION(ApCliAssocTimeout), pAd, FALSE);
 
+		RTMPInitTimer(pAd, &pAd->ApCfg.ApCliTab[i].MlmeAux.WpaDisassocAndBlockAssocTimer, 
+						GET_TIMER_FUNCTION(ApCliWpaDisassocApAndBlockAssoc), pAd, FALSE);
+		
 #ifdef MAC_REPEATER_SUPPORT
 		for (j = 0; j < MAX_EXT_MAC_ADDR_SIZE; j++)
 		{
@@ -263,10 +266,6 @@ static VOID ApCliMlmeAssocReqAction(
 	UCHAR CliIdx = 0xFF;
 #endif /* MAC_REPEATER_SUPPORT */
 
-#ifdef WH_EZ_SETUP
-		if(IS_ADPTR_EZ_SETUP_ENABLED(pAd))
-			EZ_DEBUG(DBG_CAT_CLIENT, DBG_SUBCAT_ALL, DBG_LVL_OFF, ("ApCliMlmeAssocReqAction()\n"));
-#endif
 	if ((ifIndex >= MAX_APCLI_NUM)
 #ifdef MAC_REPEATER_SUPPORT
 		&& (ifIndex < 64)
@@ -399,33 +398,45 @@ static VOID ApCliMlmeAssocReqAction(
 				(apcli_entry->MlmeAux.vht_cap_len))
 			{
 				FrameLen += build_vht_ies(pAd, (UCHAR *)(pOutBuffer + FrameLen), SUBTYPE_ASSOC_REQ);
+
+            			/* For VHT40 ApClient, Add the OP Noitfy IE to notify rootAP the STA current BW */
+            			if ((apcli_entry->MlmeAux.HtCapability.HtCapInfo.ChannelWidth == BW_40) &&
+                			(pAd->CommonCfg.vht_bw == VHT_BW_2040)) 
+                		    FrameLen += build_vht_op_mode_ies(pAd, (UCHAR *)(pOutBuffer + FrameLen));
 			}
 #endif /* DOT11_VHT_AC */
 		}
-#endif /* DOT11_N_SUPPORT */
 
-#ifdef WH_EZ_SETUP
-		/*
-			To prevent old device has trouble to parse MTK vendor IE,
-			insert easy setup IE first.
-		*/
-		if (IS_EZ_SETUP_ENABLED(wdev)
-#ifdef MAC_REPEATER_SUPPORT
-			&& (CliIdx == 0xFF)
-#endif /* MAC_REPEATER_SUPPORT */
-			&& apcli_entry->MlmeAux.support_easy_setup) {
-			FrameLen += ez_build_assoc_request_ie(pAd,wdev, ApAddr, pOutBuffer+FrameLen, FrameLen);
+#ifdef DOT11N_DRAFT3
+#ifdef APCLI_CERT_SUPPORT
+		if (pAd->bApCliCertTest == TRUE)
+		{
+			ULONG TmpLen;
+			EXT_CAP_INFO_ELEMENT extCapInfo;
+			UCHAR extInfoLen;
+
+			extInfoLen = sizeof (EXT_CAP_INFO_ELEMENT);
+			NdisZeroMemory(&extCapInfo, extInfoLen);
+
+			if ((pAd->CommonCfg.bBssCoexEnable == TRUE) &&
+			    WMODE_CAP_N(pAd->CommonCfg.PhyMode)
+			    && (pAd->CommonCfg.Channel <= 14)) 
+			{
+				extCapInfo.BssCoexistMgmtSupport = 1;
+				DBGPRINT(RT_DEBUG_TRACE, ("%s: BssCoexistMgmtSupport = 1\n", __FUNCTION__));
+			}
+			MakeOutgoingFrame(pOutBuffer + FrameLen, &TmpLen,
+					1, &ExtCapIe,
+  					1, &extInfoLen,
+					extInfoLen,	&extCapInfo,
+					END_OF_ARGS);
+			FrameLen += TmpLen;
 		}
-		//Arvind : Required to aad some info in beacon
-        //FrameLen += build_vendor_ie(pAd, wdev, pOutBuffer+FrameLen, SUBTYPE_ASSOC_REQ);		
-#endif /* WH_EZ_SETUP */
-#if defined(MWDS) || defined(WH_EZ_SETUP) || defined(STA_FORCE_ROAM_SUPPORT)
-		FrameLen += build_vendor_ie(pAd, wdev, pOutBuffer+FrameLen
-#ifdef WH_EZ_SETUP
-		, SUBTYPE_ASSOC_REQ
-#endif
-		);
-#else
+#endif /* APCLI_CERT_SUPPORT */
+#endif /* DOT11N_DRAFT3 */
+
+
+#endif /* DOT11_N_SUPPORT */
 
 #ifdef AGGREGATION_SUPPORT
 		/*
@@ -471,7 +482,7 @@ static VOID ApCliMlmeAssocReqAction(
 			FrameLen += TmpLen;
 		}
 #endif  /* AGGREGATION_SUPPORT */
-#endif
+
 		if (apcli_entry->MlmeAux.APEdcaParm.bValid)
 		{
 			if (apcli_entry->wdev.UapsdInfo.bAPSDCapable &&
@@ -602,11 +613,6 @@ static VOID ApCliMlmeDisassocReqAction(
 	UCHAR CliIdx = 0xFF;
 #endif /* MAC_REPEATER_SUPPORT */
 
-#ifdef WH_EZ_SETUP
-		if(IS_ADPTR_EZ_SETUP_ENABLED(pAd))
-			EZ_DEBUG(DBG_CAT_CLIENT, DBG_SUBCAT_ALL, DBG_LVL_OFF, ("ApCliMlmeDisassocReqAction() \n"));
-#endif
-
 	if ((ifIndex >= MAX_APCLI_NUM)
 #ifdef MAC_REPEATER_SUPPORT
 			&& (ifIndex < 64)
@@ -709,7 +715,7 @@ static VOID ApCliPeerAssocRspAction(
 	UCHAR				NewExtChannelOffset = 0xff;
 	USHORT ifIndex = (USHORT)(Elem->Priv);
 	ULONG *pCurrState = NULL;
-#if defined(DOT11_VHT_AC) || defined(WH_EZ_SETUP)
+#ifdef DOT11_VHT_AC 
 	PAPCLI_STRUCT pApCliEntry = NULL;
 #endif /* DOT11_VHT_AC */
 
@@ -717,11 +723,6 @@ static VOID ApCliPeerAssocRspAction(
 	UCHAR CliIdx = 0xFF;
 #endif /* MAC_REPEATER_SUPPORT */
 	IE_LISTS *ie_list = NULL;
-
-#ifdef WH_EZ_SETUP
-		if(IS_ADPTR_EZ_SETUP_ENABLED(pAd))
-			EZ_DEBUG(DBG_CAT_CLIENT, DBG_SUBCAT_ALL, DBG_LVL_OFF, ("%s()\n", __FUNCTION__));
-#endif
 
 	if ((ifIndex >= MAX_APCLI_NUM)
 #ifdef MAC_REPEATER_SUPPORT
@@ -741,7 +742,7 @@ static VOID ApCliPeerAssocRspAction(
 #endif /* MAC_REPEATER_SUPPORT */
 		pCurrState = &pAd->ApCfg.ApCliTab[ifIndex].AssocCurrState;
 
-#if defined(DOT11_VHT_AC) || defined(WH_EZ_SETUP) 
+#ifdef DOT11_VHT_AC 
 	pApCliEntry = &pAd->ApCfg.ApCliTab[ifIndex];
 #endif /* DOT11_VHT_AC */
 	os_alloc_mem(pAd, (UCHAR **)&ie_list, sizeof(IE_LISTS));
@@ -766,20 +767,6 @@ static VOID ApCliPeerAssocRspAction(
 			else
 #endif /* MAC_REPEATER_SUPPORT */
 			RTMPCancelTimer(&pAd->ApCfg.ApCliTab[ifIndex].MlmeAux.ApCliAssocTimer, &Cancelled);
-
-#ifdef WH_EZ_SETUP
-			if ((Status == MLME_SUCCESS)
-				&& IS_EZ_SETUP_ENABLED(&pApCliEntry->wdev)
-#ifdef MAC_REPEATER_SUPPORT
-				&& (CliIdx == 0xFF)
-#endif /* MAC_REPEATER_SUPPORT */
-				&& pApCliEntry->MlmeAux.support_easy_setup) {
-				Status = ez_process_assoc_response(&pApCliEntry->wdev, Addr2, Elem->Msg, Elem->MsgLen);
-			} else if (Status == MLME_EZ_CONNECTION_LOOP)
-			{
-			}
-#endif /* WH_EZ_SETUP */
-
 			if(Status == MLME_SUCCESS) 
 			{
 				/* go to procedure listed on page 376 */
@@ -817,6 +804,9 @@ static VOID ApCliPeerAssocRspAction(
 			}
 			else
 			{
+				if(Status == MLME_ASSOC_REJ_DATA_RATE)
+					printk("APCLI_ASSOC - receive ASSOC_RSP reject - AP not support reqested rates or modes\n");
+
 				ApCliCtrlMsg.Status = Status;
 				MlmeEnqueue(pAd, APCLI_CTRL_STATE_MACHINE, APCLI_CTRL_ASSOC_RSP,
 							sizeof(APCLI_CTRL_MSG_STRUCT), &ApCliCtrlMsg, ifIndex);
@@ -855,11 +845,6 @@ static VOID ApCliPeerDisassocAction(
 #ifdef MAC_REPEATER_SUPPORT
 	UCHAR CliIdx = 0xFF;
 #endif /* MAC_REPEATER_SUPPORT */
-
-#ifdef WH_EZ_SETUP
-	if(IS_ADPTR_EZ_SETUP_ENABLED(pAd))
-		EZ_DEBUG(DBG_CAT_CLIENT, DBG_SUBCAT_ALL, DBG_LVL_OFF, ("ApCliPeerDisassocAction()\n"));
-#endif
 
 	if ((ifIndex >= MAX_APCLI_NUM)
 #ifdef MAC_REPEATER_SUPPORT
@@ -1076,6 +1061,11 @@ static VOID ApCliAssocPostProc(
 	pApCliEntry->MlmeAux.CapabilityInfo = CapabilityInfo & SUPPORTED_CAPABILITY_INFO;
 	NdisMoveMemory(&pApCliEntry->MlmeAux.APEdcaParm, pEdcaParm, sizeof(EDCA_PARM));
 
+	if(pEdcaParm->bValid == TRUE)
+		pApCliEntry->wdev.bWmmCapable = TRUE;
+	else
+		pApCliEntry->wdev.bWmmCapable = FALSE;
+	
 	/* filter out un-supported rates */
 	pApCliEntry->MlmeAux.SupRateLen = SupRateLen;
 	NdisMoveMemory(pApCliEntry->MlmeAux.SupRate, SupRate, SupRateLen);

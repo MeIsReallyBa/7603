@@ -96,11 +96,6 @@ typedef struct _GAS_CTRL {
 	NDIS_SPIN_LOCK GASPeerListLock;
 	UINT8 ExternalANQPServerTest;
 	UINT32 cb_delay; /* Come Back Delay */
-	BOOLEAN b11U_enable;
-	UINT32 InterWorkingIELen;
-	UINT32 AdvertisementProtoIELen;
-	PUCHAR InterWorkingIE;
-	PUCHAR AdvertisementProtoIE;
 } GAS_CTRL, *PGAS_CTRL; 
 
 /* 

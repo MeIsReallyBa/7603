@@ -20,12 +20,6 @@
 #define VENDOR_FEATURE3_SUPPORT 
 #endif
     
-#ifdef WIFI_FWD_UPDATED
-#define MT7615_MT7603_COMBO_FORWARDING		1
-#else
-#define MT7615_MT7603_COMBO_FORWARDING		0
-#endif
-#define MT7615_MT7603_COMBO_OID_FOR_WEBUI		0
     
 /*#define MONITOR_FLAG_11N_SNIFFER_SUPPORT */
     
@@ -53,15 +47,6 @@
 #else
 #define FIFO_STAT_READ_PERIOD		0
 #endif /* VENDOR_FEATURE1_SUPPORT */
-
-#ifdef CONFIG_AP_SUPPORT
-    
-#ifndef VENDOR_FEATURE3_SUPPORT
-#define AP_QLOAD_SUPPORT
-#endif /* VENDOR_FEATURE3_SUPPORT */
-    
-#endif	/* CONFIG_AP_SUPPORT */
-    
 
 /* ======================== Before include files ============================ */ 
 /*
@@ -223,9 +208,6 @@ typedef enum{
     
 
 #define MAX_CUSTOM_LEN 128 
-#ifdef WH_EVENT_NOTIFIER
-#define CUSTOM_IE_TOTAL_LEN 128
-#endif /* WH_EVENT_NOTIFIER */
     
 /* */
 /* IEEE 802.11 Structures and definitions */
@@ -424,10 +406,19 @@ typedef struct  _PACKET_INFO    {
 
 #define MAC_ADDR_LEN                    6
 
-#define IS_BM_MAC_ADDR(Addr)				(((Addr[0]) & 0x01) == 0x01)
+#ifdef LINUX
+/* use native linux mcast/bcast adress checks. */
+#include <linux/etherdevice.h>
+
+#define IS_MULTICAST_MAC_ADDR(Addr)			(is_multicast_ether_addr(Addr) && !is_broadcast_ether_addr(Addr))
+#define IS_IPV6_MULTICAST_MAC_ADDR(Addr)                (is_multicast_ether_addr(Addr) && ((Addr[0]) == 0x33))
+#define IS_BROADCAST_MAC_ADDR(Addr)			(is_broadcast_ether_addr(Addr))
+#else
 #define IS_MULTICAST_MAC_ADDR(Addr)			((((Addr[0]) & 0x01) == 0x01) && ((Addr[0]) != 0xff))
 #define IS_BROADCAST_MAC_ADDR(Addr)			((((Addr[0]) & 0xff) == 0xff))
+#endif
 
+#define IS_BM_MAC_ADDR(Addr)				(((Addr[0]) & 0x01) == 0x01)
 
 
 #define RLT_MAC_BASE 0x01
@@ -438,20 +429,5 @@ typedef struct  _PACKET_INFO    {
 #define W2_MAX_HTTX_SIZE 32768
 #endif
 
-#ifdef WH_EZ_SETUP
-#define	LINE_LEN	(4+33+20+23+9+7+7+3)	/* Channel+SSID+Bssid+Security+Signal+WiressMode+ExtCh+NetworkType*/
-
-BOOLEAN ascii2int(RTMP_STRING *in, UINT32 *out);
-#endif
-#ifdef NEW_IXIA_METHOD
-extern unsigned short dectlen_l;
-extern unsigned short dectlen_m;
-extern unsigned short dectlen_h;
-#define IS_OSEXPECTED_LENGTH(len) (((len >= (dectlen_l - 4)) && (len <= dectlen_l))\
-		|| ((len >= (dectlen_m - 8)) && (len <= (dectlen_m + 8)))\
-		|| ((len >= (dectlen_h - 8)) && (len <= (dectlen_h + 8))))
-extern int rx_pkt_len;
-extern int rx_pkt_to_os;
-#endif
 #endif /* __RT_COMM_H__ */
 

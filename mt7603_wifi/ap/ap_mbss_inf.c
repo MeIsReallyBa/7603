@@ -49,7 +49,8 @@
 
 
 /* --------------------------------- Public -------------------------------- */
-NET_DEV_STATS *RT28xx_get_ether_stats(PNET_DEV net_dev);
+struct rtnl_link_stats64 *
+RT28xx_get_ether_stats64(PNET_DEV net_dev, struct rtnl_link_stats64 *stats);
 
 /*
 ========================================================================
@@ -79,7 +80,7 @@ VOID RT28xx_MBSS_Init(VOID *pAd, PNET_DEV pDevMain)
 	netDevHook.stop = MBSS_VirtualIF_Close;	/* device close hook point */
 	netDevHook.xmit = rt28xx_send_packets;	/* hard transmit hook point */
 	netDevHook.ioctl = rt28xx_ioctl;	/* ioctl hook point */
-	netDevHook.get_stats = RT28xx_get_ether_stats;
+	netDevHook.get_stats = RT28xx_get_ether_stats64;
 
 	RTMP_AP_IoctlHandle(pAd, NULL, CMD_RTPRIV_IOCTL_MBSS_INIT,
 						0, &netDevHook, 0);
@@ -132,8 +133,6 @@ INT MBSS_VirtualIF_Open(PNET_DEV pDev)
 {
 	VOID *pAd;
 
-	/* increase MODULE use count */
-	RT_MOD_INC_USE_COUNT();
 
 	DBGPRINT(RT_DEBUG_TRACE, ("%s: ===> MBSSVirtualIF_open\n", RTMP_OS_NETDEV_GET_DEVNAME(pDev)));
 
@@ -146,10 +145,10 @@ INT MBSS_VirtualIF_Open(PNET_DEV pDev)
 
 #ifdef MT_MAC
     RTMP_AP_IoctlHandle(pAd, NULL, CMD_RTPRIV_IOCTL_MBSS_CR_ENABLE, 0, pDev, 0);
-#ifdef CONFIG_RA_HW_NAT_WIFI_NEW_ARCH
-	RT_MOD_HNAT_REG(pDev);
 #endif
-#endif
+
+	/* increase MODULE use count */
+	RT_MOD_INC_USE_COUNT();
 
 	RTMP_OS_NETDEV_START_QUEUE(pDev);
 
@@ -189,9 +188,6 @@ INT MBSS_VirtualIF_Close(PNET_DEV pDev)
 
 	RTMP_AP_IoctlHandle(pAd, NULL, CMD_RTPRIV_IOCTL_MBSS_CLOSE, 0, pDev, 0);
 
-#ifdef CONFIG_RA_HW_NAT_WIFI_NEW_ARCH
-	RT_MOD_HNAT_DEREG(pDev);
-#endif
 	VIRTUAL_IF_DOWN(pAd);
 
 	RT_MOD_DEC_USE_COUNT();

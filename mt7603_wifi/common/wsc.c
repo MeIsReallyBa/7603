@@ -312,7 +312,9 @@ VOID    WscStateMachineInit(
 			WscInitCommonTimers(pAd, pWScControl);
 			pWScControl->WscUpdatePortCfgTimerRunning = FALSE;
 			WSC_TIMER_INIT(pAd, pWScControl, &pWScControl->WscUpdatePortCfgTimer, pWScControl->WscUpdatePortCfgTimerRunning, WscUpdatePortCfgTimeout);
+#ifdef WSC_V2_SUPPORT
 			WSC_TIMER_INIT(pAd, pWScControl, &pWScControl->WscSetupLockTimer, pWScControl->WscSetupLockTimerRunning, WscSetupLockTimeout);
+#endif
 		}
 
 #ifdef APCLI_SUPPORT
@@ -761,8 +763,7 @@ VOID WscEAPAction(
 			Sometimes TXS would delay and received after M1.
 			Cancel EapReqIdRetryTimer here if timer is still running.
 		*/
-
-		if (pEntry && pEntry->bEapReqIdRetryTimerRunning)
+		if (pEntry->bEapReqIdRetryTimerRunning)
 		{
 			BOOLEAN bCancelled;
 			RTMPCancelTimer(&pEntry->EapReqIdRetryTimer, &bCancelled);
@@ -916,15 +917,6 @@ VOID WscEAPAction(
 			if (CurOpMode == AP_MODE)
 			{
 				pWscControl->WscConfMode = WSC_DISABLE;
-
-#ifdef WH_EZ_SETUP
-				if(IS_EZ_SETUP_ENABLED(pEntry->wdev)){
-					pEntry->wdev->ez_driver_params.ez_wps_reconnect = TRUE;
-					NdisGetSystemUpTime(&pEntry->wdev->ez_driver_params.ez_wps_reconnect_timestamp);
-					COPY_MAC_ADDR(pEntry->wdev->ez_driver_params.ez_wps_bssid,pWscControl->WscBssid);
-				}
-#endif			
-				
 				/* Bring apcli interface down first */
 				if(pEntry && IS_ENTRY_APCLI(pEntry) && pAdapter->ApCfg.ApCliTab[BSS0].Enable == TRUE )
 				{
@@ -1493,12 +1485,27 @@ VOID WscEapEnrolleeAction(
 					/* Enrollee 192 random bytes for DH key generation */
 					for (idx = 0; idx < 192; idx++)
 						pWscControl->RegData.EnrolleeRandom[idx] = RandomByte(pAdapter);
+					NdisZeroMemory(pWscControl->RegData.Pke, sizeof(pWscControl->RegData.Pke));
             		RT_DH_PublicKey_Generate (
                     	WPS_DH_G_VALUE, sizeof(WPS_DH_G_VALUE),
             	    	WPS_DH_P_VALUE, sizeof(WPS_DH_P_VALUE),
             	    	pWscControl->RegData.EnrolleeRandom, sizeof(pWscControl->RegData.EnrolleeRandom),
             	    	pWscControl->RegData.Pke, (UINT *) &DH_Len);
 				
+			/* Need to prefix zero padding */
+			if((DH_Len != sizeof(pWscControl->RegData.Pke)) &&
+			    (DH_Len < sizeof(pWscControl->RegData.Pke)))
+			{
+			    UCHAR TempKey[192];
+			    INT DiffCnt;
+			    DiffCnt = sizeof(pWscControl->RegData.Pke) - DH_Len;
+
+			    NdisFillMemory(&TempKey, DiffCnt, 0);
+			    NdisCopyMemory(&TempKey[DiffCnt], pWscControl->RegData.Pke, DH_Len);
+			    NdisCopyMemory(pWscControl->RegData.Pke, TempKey, sizeof(TempKey));
+			    DH_Len += DiffCnt;
+			    DBGPRINT(RT_DEBUG_TRACE, ("%s: Do zero padding!\n", __func__));
+			}
 					pWscControl->RegData.ReComputePke = 0;
 				}
 			}
@@ -1585,21 +1592,26 @@ VOID WscEapEnrolleeAction(
 			if (pWscControl->WscState == WSC_STATE_SENT_M1 ||
 				pWscControl->WscState == WSC_STATE_RX_M2D)
 			{
+
+				BOOLEAN bReplyNack = FALSE;
+				
 				if ((rv = ProcessMessageM2D(pAdapter, Elem->Msg, Elem->MsgLen, &pWscControl->RegData)))
 					goto Fail;
 
 				pWscControl->WscStatus = STATUS_WSC_EAP_M2D_RECEIVED;
 				
-				if ((CurOpMode == STA_MODE)
-					)
+				if (CurOpMode == AP_MODE)
 				{
-					/* When external registrar is Marvell station, */
-					/* wps station sends NACK may confuse or reset Marvell wps state machine. */
-					OpCode |= WSC_OPCODE_ACK;
-					DataLen = BuildMessageACK(pAdapter, pWscControl, WscData);
-	 				RTMPSendWirelessEvent(pAdapter, IW_WSC_SEND_ACK, NULL, (pWscControl->EntryIfIdx & 0x0F), 0);
-				}
+					bReplyNack = TRUE;
+#ifdef APCLI_SUPPORT
+					if (pEntry && !IS_ENTRY_APCLI(pEntry))
+						bReplyNack = TRUE;
 				else
+						bReplyNack = FALSE;
+#endif
+				}
+
+				if (bReplyNack)
 				{
 					/* For VISTA SP1 internal registrar test */
 					OpCode |= WSC_OPCODE_NACK;
@@ -1607,6 +1619,15 @@ VOID WscEapEnrolleeAction(
 					DataLen = BuildMessageNACK(pAdapter, pWscControl, WscData);
 	 				RTMPSendWirelessEvent(pAdapter, IW_WSC_SEND_NACK, NULL, (pWscControl->EntryIfIdx & 0x0F), 0);
 				}
+				else
+				{
+					/* When external registrar is Marvell station, */
+					/* wps station sends NACK may confuse or reset Marvell wps state machine. */
+					OpCode |= WSC_OPCODE_ACK;
+					DataLen = BuildMessageACK(pAdapter, pWscControl, WscData);
+	 				RTMPSendWirelessEvent(pAdapter, IW_WSC_SEND_ACK, NULL, (pWscControl->EntryIfIdx & 0x0F), 0);
+				}
+				
 				/* Change the state to next one */
 				pWscControl->WscState = WSC_STATE_RX_M2D;
 			}
@@ -2525,31 +2546,6 @@ Fail:
 #endif /* WSC_NFC_SUPPORT */
 
 		pWscControl->bWscTrigger = FALSE;
-
-/* WPS_BandSteering Support */
-#ifdef BAND_STEERING
-	if (pAdapter->ApCfg.BandSteering) {
-
-		int apidx = pWscControl->EntryIfIdx & 0x0F;
-		struct wifi_dev *wdev = NULL;
-
-		if (apidx < HW_BEACON_MAX_NUM)
-			wdev = &pAdapter->ApCfg.MBSSID[apidx].wdev;
-
-		if (wdev) {
-			PBND_STRG_CLI_TABLE table = Get_BndStrgTable(pAdapter, wdev->func_idx);
-
-			if (table && table->bEnabled) {
-				NdisAcquireSpinLock(&table->WpsWhiteListLock);
-				ClearWpsWhiteList(&table->WpsWhiteList);
-				NdisReleaseSpinLock(&table->WpsWhiteListLock);
-				MTWF_LOG(DBG_CAT_SEC, CATSEC_WPS, DBG_LVL_TRACE, ("%s:channel %u wps whitelist cleared, size : %d\n",
-				 __func__, table->Channel, table->WpsWhiteList.size));
-			}
-		}
-	}
-#endif
-
 		if (pWscControl->Wsc2MinsTimerRunning)
 		{
 			pWscControl->Wsc2MinsTimerRunning = FALSE;
@@ -3154,20 +3150,6 @@ VOID Wsc2MinsTimeOutAction(
 				IsAPConfigured = pWscControl->WscConfStatus;
 				if ((pWscControl->EntryIfIdx & 0x0F) < pAd->ApCfg.BssidNum)
 				{
-/* WPS_BandSteering Support */
-#ifdef BAND_STEERING
-					if (pAd->ApCfg.BandSteering) {
-						PBND_STRG_CLI_TABLE table = Get_BndStrgTable(pAd, MAIN_MBSSID);
-
-						if (table && table->bEnabled) {
-							NdisAcquireSpinLock(&table->WpsWhiteListLock);
-							ClearWpsWhiteList(&table->WpsWhiteList);
-							NdisReleaseSpinLock(&table->WpsWhiteListLock);
-							MTWF_LOG(DBG_CAT_ALL, DBG_SUBCAT_ALL, DBG_LVL_TRACE, ("%s:channel %u wps whitelist cleared, size : %d\n",
-									__func__, table->Channel, table->WpsWhiteList.size));
-						}
-					}
-#endif
 					WscBuildBeaconIE(pWscControl->pAd, IsAPConfigured, FALSE, 0, 0, (pWscControl->EntryIfIdx & 0x0F), NULL, 0, CurOpMode);
 					WscBuildProbeRespIE(pWscControl->pAd, WSC_MSGTYPE_AP_WLAN_MGR, IsAPConfigured, FALSE, 0, 0, pWscControl->EntryIfIdx, NULL, 0, CurOpMode);
 					APUpdateBeaconFrame(pWscControl->pAd, pWscControl->EntryIfIdx & 0x0F);
@@ -5022,7 +5004,11 @@ VOID WscBuildProbeReqIE(
 	PUCHAR			pData;
 	USHORT          tempVal = 0;
 
-	PWSC_REG_DATA	pReg = (PWSC_REG_DATA) &pWpsCtrl->RegData;
+#ifdef APCLI_SUPPORT
+	PWSC_REG_DATA	pReg = (PWSC_REG_DATA)&pAd->ApCfg.ApCliTab[0].WscControl.RegData;
+#else /* APCLI_SUPPORT */
+	PWSC_REG_DATA	pReg = (PWSC_REG_DATA) &pAd->StaCfg.WscControl.RegData;
+#endif /* !APCLI_SUPPORT */
 
 
 	DBGPRINT(RT_DEBUG_INFO, ("-----> WscBuildProbeReqIE\n"));
@@ -5050,46 +5036,51 @@ VOID WscBuildProbeReqIE(
 	Len   += templen;
 
 	/* 2. Request Type */	
-	if (pWpsCtrl->WscConfMode == WSC_REGISTRAR)
+#ifdef APCLI_SUPPORT	
+	if (pAd->ApCfg.ApCliTab[0].WscControl.WscConfMode == WSC_REGISTRAR)
 		tempVal = WSC_MSGTYPE_REGISTRAR;
-	else if (pWpsCtrl->WscConfMode == WSC_ENROLLEE)
+	else if (pAd->ApCfg.ApCliTab[0].WscControl.WscConfMode == WSC_ENROLLEE)
 		tempVal = WSC_MSGTYPE_ENROLLEE_OPEN_8021X;
 	else
 		tempVal = WSC_MSGTYPE_ENROLLEE_INFO_ONLY;
+#else /* APCLI_SUPPORT */
+	if (pAd->StaCfg.WscControl.WscConfMode == WSC_REGISTRAR)
+		tempVal = WSC_MSGTYPE_REGISTRAR;
+	else if (pAd->StaCfg.WscControl.WscConfMode == WSC_ENROLLEE)
+		tempVal = WSC_MSGTYPE_ENROLLEE_OPEN_8021X;
+	else
+		tempVal = WSC_MSGTYPE_ENROLLEE_INFO_ONLY;
+#endif /* !APCLI_SUPPORT */
 
     templen = AppendWSCTLV(WSC_ID_REQ_TYPE, pData, (UINT8 *)&tempVal, 0);
 	pData += templen;
 	Len   += templen;
 
 	/* 3. Config method */	
-#ifdef WSC_V2_SUPPORT
-	if (pWpsCtrl->WscV2Info.bEnableWpsV2)
-	{
+
 #ifdef APCLI_SUPPORT
-		if (pWpsCtrl->bWscTrigger)
-		{
-			DBGPRINT(RT_DEBUG_INFO, ("WscBuildProbeReqIE : Apclient WPS2 enable trigger\n"));
-			if (pWpsCtrl->WscMode == WSC_PIN_MODE)
+#ifdef WSC_V2_SUPPORT
+	if (pAd->ApCfg.ApCliTab[0].WscControl.WscV2Info.bEnableWpsV2)
 			{
-				tempVal = (pWpsCtrl->WscConfigMethods & 0x200F);
+		tempVal = pAd->ApCfg.ApCliTab[0].WscControl.WscConfigMethods;
 			}
 			else
+#endif /* WSC_V2_SUPPORT */
 			{
-				DBGPRINT(RT_DEBUG_INFO, ("WscBuildProbeReqIE : Apclient WPS2 enable trigger & PBC mode\n"));
-				tempVal = (pWpsCtrl->WscConfigMethods & 0x02F0);
-			}
+		tempVal = (pAd->ApCfg.ApCliTab[0].WscControl.WscConfigMethods & 0x00FF);
 		}
-		else
-			tempVal = pWpsCtrl->WscConfigMethods;
-#else
-		tempVal = pWpsCtrl->WscConfigMethods;
-#endif /* APCLI_SUPPORT */
+#else /* APCLI_SUPPORT */
+#ifdef WSC_V2_SUPPORT
+	if (pAd->StaCfg.WscControl.WscV2Info.bEnableWpsV2)
+	{
+			tempVal = pAd->StaCfg.WscControl.WscConfigMethods;
 	}
 	else
 #endif /* WSC_V2_SUPPORT */
 	{
-		tempVal = (pWpsCtrl->WscConfigMethods & 0x00FF);
+		tempVal = (pAd->StaCfg.WscControl.WscConfigMethods & 0x00FF);
 	}
+#endif /* !APCLI_SUPPORT */
 
 	
 	tempVal = cpu2be16(tempVal);
@@ -5132,7 +5123,11 @@ VOID WscBuildProbeReqIE(
 
 
 #ifdef WSC_V2_SUPPORT
-	if (pWpsCtrl->WscV2Info.bEnableWpsV2)
+#ifdef APCLI_SUPPORT	
+	if (pAd->ApCfg.ApCliTab[0].WscControl.WscV2Info.bEnableWpsV2)
+#else /* APCLI_SUPPORT */
+	if (pAd->StaCfg.WscControl.WscV2Info.bEnableWpsV2)
+#endif /* !APCLI_SUPPORT */
 	{
 		/* 10. Manufacturer */
 		NdisZeroMemory(pData, 64 + 4);
@@ -5159,12 +5154,22 @@ VOID WscBuildProbeReqIE(
 		Len   += templen;
 
 		/* Version2 */	
-		WscGenV2Msg(pWpsCtrl,
+#ifdef APCLI_SUPPORT		
+		WscGenV2Msg(&pAd->ApCfg.ApCliTab[0].WscControl,
 					FALSE, 
 					NULL, 
 					0, 
 					&pData, 
 					&Len);
+#else /* APCLI_SUPPORT */
+		WscGenV2Msg(&pAd->StaCfg.WscControl,
+					FALSE,
+					NULL,
+					0,
+					&pData,
+					&Len);
+#endif /* !APCLI_SUPPORT */
+
 	}
 #endif /* WSC_V2_SUPPORT */
 
@@ -5623,8 +5628,6 @@ VOID WscStop(
 	RTMPCancelTimer(&pWscControl->EapolTimer, &Cancelled);
 	pWscControl->EapolTimerRunning = FALSE;
 #ifdef CONFIG_AP_SUPPORT
-	WscPBCSessionOverlapClear(pAd);
-
 	if ((pWscControl->EntryIfIdx & 0x0F)< pAd->ApCfg.BssidNum)
 	{
 	    pEntry = MacTableLookup(pAd, pWscControl->EntryAddr);
@@ -5652,26 +5655,6 @@ VOID WscStop(
 	pWscControl->EapMsgRunning = FALSE;
 	pWscControl->EapolTimerPending = FALSE;
 	pWscControl->bWscTrigger = FALSE;
-
-/* WPS_BandSteering Support */
-#ifdef CONFIG_AP_SUPPORT
-#ifdef BAND_STEERING
-	/* WPS: clear WPS WHITELIST in case of AP Wsc Stop */
-	if (!bFromApCli && (pAd->ApCfg.BandSteering)) {
-
-		struct wifi_dev *wdev = &pAd->ApCfg.MBSSID[pWscControl->EntryIfIdx & 0x0F].wdev;
-		PBND_STRG_CLI_TABLE table = Get_BndStrgTable(pAd, wdev->func_idx);
-
-		if (table && table->bEnabled) {
-			NdisAcquireSpinLock(&table->WpsWhiteListLock);
-			ClearWpsWhiteList(&table->WpsWhiteList);
-			NdisReleaseSpinLock(&table->WpsWhiteListLock);
-			MTWF_LOG(DBG_CAT_SEC, CATSEC_WPS, DBG_LVL_TRACE, ("%s:channel %u wps whitelist cleared, size : %d\n",
-			 __func__, table->Channel, table->WpsWhiteList.size));
-		}
-	}
-#endif
-#endif /* CONFIG_AP_SUPPORT */
 
 	if (pWscControl->WscScanTimerRunning)
 	{
@@ -6017,8 +6000,6 @@ void    WscWriteConfToPortCfg(
 						pPMKBuf = pAd->ApCfg.MBSSID[CurApIdx].PMK;
 						pSSIDStr = (PUCHAR)pAd->ApCfg.MBSSID[CurApIdx].Ssid;
 						ssidLen = pAd->ApCfg.MBSSID[CurApIdx].SsidLen;
-						RTMPZeroMemory(pAd->ApCfg.MBSSID[CurApIdx].WPAKeyString, 65);
-						RTMPMoveMemory(pAd->ApCfg.MBSSID[CurApIdx].WPAKeyString, pCredential->Key, pWscControl->WpaPskLen);
 					}
 #endif /* CONFIG_AP_SUPPORT */
 					RT_CfgSetWPAPSKKey(pAd, pCredential->Key, pWscControl->WpaPskLen, pSSIDStr, ssidLen, pPMKBuf);
@@ -6083,6 +6064,39 @@ void    WscWriteConfToPortCfg(
 			}
 		}
 #ifdef CONFIG_AP_SUPPORT
+	}
+	else
+	{
+		if (CurOpMode == AP_MODE)
+		{
+			pAd->ApCfg.MBSSID[CurApIdx].wdev.DefaultKeyId = 1;
+			WscSetAuthMode(pAd, CurOpMode, CurApIdx, "WPAPSKWPA2PSK");
+			WscSetEncrypType(pAd, CurOpMode, CurApIdx, "TKIPAES");
+			pWscControl->WpaPskLen = (INT)pCredential->KeyLength;
+			NdisZeroMemory(pWscControl->WpaPsk, 64);
+			NdisMoveMemory(pWscControl->WpaPsk, pCredential->Key, pWscControl->WpaPskLen);
+			/* Copy SSID */
+			NdisZeroMemory(pAd->ApCfg.MBSSID[CurApIdx].Ssid, MAX_LEN_OF_SSID);
+			NdisMoveMemory(pAd->ApCfg.MBSSID[CurApIdx].Ssid, pCredential->SSID.Ssid, pCredential->SSID.SsidLength);
+			pAd->ApCfg.MBSSID[CurApIdx].SsidLen = pCredential->SSID.SsidLength;
+			/*
+				Hex Key 
+			*/
+			if(pWscControl->WscKeyASCII == 0)
+			{
+				AtoH((RTMP_STRING *) pWscControl->WpaPsk, pAd->ApCfg.MBSSID[CurApIdx].PMK, 32);
+			}
+			else
+			{
+				UCHAR       keyMaterial[40] = {0};
+				
+				RtmpPasswordHash((RTMP_STRING *)pWscControl->WpaPsk,
+							 (PUCHAR) pAd->ApCfg.MBSSID[CurApIdx].Ssid, 
+							 pAd->ApCfg.MBSSID[CurApIdx].SsidLen, 
+							 keyMaterial);
+				NdisMoveMemory(pAd->ApCfg.MBSSID[CurApIdx].PMK, keyMaterial, 32);
+			}
+		}
 	}
 #endif /* CONFIG_AP_SUPPORT */
 
@@ -6590,11 +6604,6 @@ VOID	WscScanExec(
 #ifdef WSC_LED_SUPPORT
 	UCHAR WPSLEDStatus;
 #endif /* WSC_LED_SUPPORT */
-#ifdef APCLI_SUPPORT
-#ifdef WH_EZ_SETUP
-	UCHAR if_idx = (pWscControl->EntryIfIdx & 0x0F);
-#endif
-#endif /*APCLI_SUPPORT*/
 
 	/* Prevent infinite loop if conncet time out didn't stop the repeat scan */
 	if ((pWscControl->WscStatus == STATUS_WSC_FAIL) ||
@@ -6614,11 +6623,7 @@ VOID	WscScanExec(
 #ifdef APCLI_SUPPORT
 	IF_DEV_CONFIG_OPMODE_ON_AP(pAd)
 	{
-		ApSiteSurvey(pAd, NULL, SCAN_WSC_ACTIVE, FALSE
-#ifdef WH_EZ_SETUP
-					,&pAd->ApCfg.ApCliTab[if_idx].wdev
-#endif
-			);
+		ApSiteSurvey(pAd, NULL, SCAN_WSC_ACTIVE, FALSE);
 	}
 #endif /* APCLI_SUPPORT */
 
@@ -6754,33 +6759,15 @@ BOOLEAN	WscPBCExec(
 		RTMP_STRING ChStr[5] = {0};
 #else
 		UCHAR channel;
-#endif	
-#ifdef WH_EZ_SETUP
-		UCHAR apcli_idx = (pWscControl->EntryIfIdx & 0x0F);
-		struct wifi_dev *cli_wdev = &pAd->ApCfg.ApCliTab[apcli_idx].wdev;
-#endif
-
+#endif		
 		NdisMoveMemory(pWscControl->RegData.SelfInfo.MacAddr,
 	                   pAd->ApCfg.ApCliTab[BSS0].wdev.if_addr,
 	                   MAC_ADDR_LEN);
 
-#ifdef WH_EZ_SETUP		
-		if (IS_EZ_SETUP_ENABLED(cli_wdev))
-		{
-			struct wifi_dev *ap_wdev = &pAd->ApCfg.MBSSID[cli_wdev->func_idx].wdev;
-			ez_send_delay_disconnect_for_pbc(ap_wdev);
-		}
-#endif		
-
 #ifdef RTMP_TIMER_TASK_SUPPORT
 		// TODO: shiang-usw, check about this Channel setting here? Original it indicate to pAd->MlmeAux.Channel!
 		snprintf(ChStr, sizeof(ChStr), "%d", pAd->ApCfg.ApCliTab[BSS0].MlmeAux.Channel);
-#ifdef WH_EZ_SETUP		
-		if (IS_EZ_SETUP_ENABLED(cli_wdev))
-			rtmp_set_channel(pAd, cli_wdev, pAd->ApCfg.ApCliTab[BSS0].MlmeAux.Channel);
-		else
-#endif			
-			Set_Channel_Proc(pAd, ChStr);
+		Set_Channel_Proc(pAd, ChStr);
 #else
 		channel = pAd->ApCfg.ApCliTab[BSS0].MlmeAux.Channel;
 		RTEnqueueInternalCmd(pAd, CMDTHREAD_APCLI_PBC_TIMEOUT, (VOID *)&channel, sizeof(UCHAR));
@@ -8026,23 +8013,6 @@ VOID WscPBCSessionOverlapCheck(
 	return;
 }
 
-VOID WscPBCSessionOverlapClear(
-	IN	RTMP_ADAPTER *pAd)
-{
-	PWSC_STA_PBC_PROBE_INFO	pWscStaPbcProbeInfo = &pAd->CommonCfg.WscStaPbcProbeInfo;
-	UCHAR  i;
-
-	for (i = 0; i < MAX_PBC_STA_TABLE_SIZE; i++) {
-		NdisZeroMemory(&(pWscStaPbcProbeInfo->StaMacAddr[i][0]), MAC_ADDR_LEN);
-		pWscStaPbcProbeInfo->ReciveTime[i] = 0;
-		pWscStaPbcProbeInfo->Valid[i] = FALSE;
-	}
-	pWscStaPbcProbeInfo->WscPBCStaProbeCount = 0;
-
-	DBGPRINT(RT_DEBUG_TRACE, ("WscPBCSessionOverlapClear : WscPBCStaProbeCount = %d\n",
-				pWscStaPbcProbeInfo->WscPBCStaProbeCount));
-}
-
 VOID WscPBC_DPID_FromSTA(
 	IN  PRTMP_ADAPTER		pAd,	
 	IN	PUCHAR				pMacAddr)
@@ -8127,6 +8097,7 @@ VOID WscWriteConfToDatFile(RTMP_ADAPTER *pAd, UCHAR CurOpMode)
 			DBGPRINT(RT_DEBUG_TRACE, ("<----- WscWriteConfToDatFile (wrong apidx = %d)\n", apidx));
 			return;
 		}
+		pWscControl = &pAd->ApCfg.MBSSID[apidx].WscControl;
 			fileName = AP_PROFILE_PATH;
 
 		snprintf((RTMP_STRING *) WepKeyName, sizeof(WepKeyName), "Key%dStr%d=", pAd->ApCfg.MBSSID[apidx].wdev.DefaultKeyId+1, apidx+1);

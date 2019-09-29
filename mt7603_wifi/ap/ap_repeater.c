@@ -50,7 +50,7 @@ REPEATER_CLIENT_ENTRY *RTMPLookupRepeaterCliEntry(
 	} else {
 		NdisAcquireSpinLock(((REPEATER_ADAPTER_DATA_TABLE *)pData)->EntryLock);
 	}
-	
+
 	COPY_MAC_ADDR(tempMAC, pAddr);
 	HashIdx = MAC_ADDR_HASH_INDEX(tempMAC);
 
@@ -59,21 +59,20 @@ REPEATER_CLIENT_ENTRY *RTMPLookupRepeaterCliEntry(
 		if (bIsPad == TRUE) {
 			pMapEntry = ((PRTMP_ADAPTER)pData)->ApCfg.ReptMapHash[HashIdx];
 		} else
-			pMapEntry = (REPEATER_CLIENT_ENTRY_MAP *)(*((((REPEATER_ADAPTER_DATA_TABLE *)pData)->MapHash)
-					+ HashIdx));
+			pMapEntry = *((((REPEATER_ADAPTER_DATA_TABLE *)pData)->MapHash) + HashIdx) ;
 
 		while (pMapEntry)
 		{
 			pEntry = pMapEntry->pReptCliEntry;
 
-			if (pEntry && MAC_ADDR_EQUAL(pEntry->OriginalAddress, tempMAC))
+			if (MAC_ADDR_EQUAL(pEntry->OriginalAddress, tempMAC))
 			{
 				if (pEntry->CliValid == FALSE) {
 					*pIsLinkValid = FALSE;
 					pEntry = NULL;
 				}
 				
-				break;			
+				break;
 			}
 			else
 			{
@@ -87,8 +86,7 @@ REPEATER_CLIENT_ENTRY *RTMPLookupRepeaterCliEntry(
 		if (bIsPad == TRUE) {
 			pEntry = ((PRTMP_ADAPTER)pData)->ApCfg.ReptCliHash[HashIdx];
 		} else {
-			pEntry = (REPEATER_CLIENT_ENTRY *)(*((((REPEATER_ADAPTER_DATA_TABLE*)pData)->CliHash)
-					+ HashIdx));
+			pEntry = *((((REPEATER_ADAPTER_DATA_TABLE *)pData)->CliHash) + HashIdx) ;
 		}
 
 
@@ -206,11 +204,8 @@ VOID RTMPInsertRepeaterEntry(
 			DBGPRINT(RT_DEBUG_ERROR, ("\n  receive mac :%02x:%02x:%02x:%02x:%02x:%02x !!!\n", 
 						pAddr[0], pAddr[1], pAddr[2], pAddr[3], pAddr[4], pAddr[5]));
 			DBGPRINT(RT_DEBUG_ERROR, (" duplicate Insert !!!\n"));
-			/*NdisReleaseSpinLock(&pAd->ApCfg.ReptCliEntryLock);
+			NdisReleaseSpinLock(&pAd->ApCfg.ReptCliEntryLock);
 			return ;
-			*/
-
-			break;
 		}
 
 		if (pReptCliEntry->CliEnable == FALSE)
@@ -241,7 +236,6 @@ VOID RTMPInsertRepeaterEntry(
 	pReptCliEntry->AssocReqCnt = 0;
 	pReptCliEntry->CliTriggerTime = 0;
 	pReptCliEntry->pNext = NULL;
-	pReptCliEntry->wdev = &pAd->ApCfg.ApCliTab[apidx].wdev;/*sync from 7615*/
 	pReptCliMap->pReptCliEntry = pReptCliEntry;
 	pReptCliMap->pNext = NULL;
 
@@ -332,12 +326,7 @@ VOID RTMPInsertRepeaterEntry(
 
 		while (pCurrMapEntry->pNext != NULL)
 			pCurrMapEntry = pCurrMapEntry->pNext;
-		if (pCurrMapEntry == pReptCliMap)
-			DBGPRINT(RT_DEBUG_ERROR, 
-				("Wrong!!! pCurrMapEntry == pReptCliMap(%p) in %s %d\n",
-				pReptCliMap,__FUNCTION__,__LINE__));		
-		else		
-			pCurrMapEntry->pNext = pReptCliMap;
+		pCurrMapEntry->pNext = pReptCliMap;
 	}
 
 	pAd->ApCfg.RepeaterCliSize++;
@@ -440,15 +429,10 @@ VOID RTMPRemoveRepeaterEntry(
 				{
 					pPrevMapEntry->pNext = pMapEntry->pNext;
 				}
-				pMapEntry->pNext=NULL;
-				pMapEntry->pReptCliEntry=NULL;
 				break;
 			}
 
 			pPrevMapEntry = pProbeMapEntry;
-			if (pProbeMapEntry == pProbeMapEntry->pNext)
-				DBGPRINT(RT_DEBUG_ERROR,("Wrong!!! pProbeMapEntry == pProbeMapEntry->pNext(%p) in %s %d\n",
-					pProbeMapEntry,__FUNCTION__,__LINE__));
 			pProbeMapEntry = pProbeMapEntry->pNext;
 		} while (pProbeMapEntry);
 	}
@@ -461,7 +445,7 @@ done:
 	NdisZeroMemory(pAd->ApCfg.ApCliTab[func_tb_idx].RepeaterCli[CliIdx].OriginalAddress, MAC_ADDR_LEN);
 
 	if ((bVaild == TRUE) && (pAd->ApCfg.RepeaterCliSize > 0))
-	pAd->ApCfg.RepeaterCliSize--;
+		pAd->ApCfg.RepeaterCliSize--;
 
 	/* set the apcli interface be invalid. */
 	pAd->ApCfg.ApCliTab[func_tb_idx].RepeaterCli[CliIdx].CliValid = FALSE;
@@ -631,9 +615,7 @@ MAC_TABLE_ENTRY *RTMPInsertRepeaterMacEntry(
 	}
 	else
 	{
-		if (pEntry)
-			DBGPRINT(RT_DEBUG_ERROR, ("%s - exist entry #%d, Aid = %d, Total= %d\n",
-					__func__, i, pEntry->Aid, pAd->MacTab.Size));
+		DBGPRINT(RT_DEBUG_ERROR, ("%s - exist entry #%d, Aid = %d, Total= %d\n", __FUNCTION__, i, pEntry->Aid, pAd->MacTab.Size));
 		NdisReleaseSpinLock(&pAd->MacTabLock);
 		return pEntry;
 	}
@@ -672,13 +654,9 @@ VOID RTMPRepeaterReconnectionCheck(
 	UCHAR	CfgSsidLen;
 	NDIS_802_11_SSID Ssid;
 	
-	if ((pAd->ApCfg.bMACRepeaterEn &&
+	if (pAd->ApCfg.bMACRepeaterEn &&
 		pAd->ApCfg.MACRepeaterOuiMode == 2 &&
 		pAd->ApCfg.ApCliAutoConnectRunning == FALSE)
-#ifdef AP_PARTIAL_SCAN_SUPPORT
-		&& (pAd->ApCfg.bPartialScanning == FALSE)
-#endif /* AP_PARTIAL_SCAN_SUPPORT */		
-		)		
 	{
 		for (i = 0; i < MAX_APCLI_NUM; i++)
 		{
@@ -693,17 +671,9 @@ VOID RTMPRepeaterReconnectionCheck(
 				DBGPRINT(RT_DEBUG_TRACE, (" %s(): Scan channels for AP (%s)\n", 
 							__FUNCTION__, pApCliCfgSsid));
 				pAd->ApCfg.ApCliAutoConnectRunning = TRUE;
-#ifdef AP_PARTIAL_SCAN_SUPPORT
-				if(pAd->ApCfg.bPartialScanEnable)
-				pAd->ApCfg.bPartialScanning = TRUE;
-#endif /* AP_PARTIAL_SCAN_SUPPORT */
 				Ssid.SsidLength = CfgSsidLen;
 				NdisCopyMemory(Ssid.Ssid, pApCliCfgSsid, CfgSsidLen);
-				ApSiteSurvey(pAd, &Ssid, SCAN_ACTIVE, FALSE
-#ifdef WH_EZ_SETUP
-							,&pAd->ApCfg.ApCliTab[i].wdev
-#endif
-				);
+				ApSiteSurvey(pAd, &Ssid, SCAN_ACTIVE, FALSE);
 			}	
 		}
 	}
@@ -792,6 +762,7 @@ VOID RTMPRepeaterInsertInvaildMacEntry(
 		{
 			NdisZeroMemory(pEntry->MacAddr, MAC_ADDR_LEN);
 			COPY_MAC_ADDR(pEntry->MacAddr, pAddr);
+			pEntry->entry_idx = idx;
 			pEntry->bInsert = TRUE;
 			break;
 		}
@@ -935,29 +906,6 @@ INT Show_Repeater_Cli_Proc(RTMP_ADAPTER *pAd, RTMP_STRING *arg)
 	} 
 
 	return TRUE;
-}
-REPEATER_CLIENT_ENTRY *lookup_rept_entry(RTMP_ADAPTER *pAd, PUCHAR address)
-{
-	REPEATER_CLIENT_ENTRY *rept_entry = NULL;
-	UCHAR isLinkValid;
-
-	rept_entry = RTMPLookupRepeaterCliEntry(
-					 pAd,
-					 FALSE,
-					 address,
-					 TRUE, &isLinkValid);
-
-	if (!rept_entry)
-		rept_entry = RTMPLookupRepeaterCliEntry(
-						 pAd,
-						 TRUE,
-						 address,
-						 TRUE, &isLinkValid);
-
-	if (rept_entry)
-		return rept_entry;
-
-	return NULL;
 }
 #endif /* MAC_REPEATER_SUPPORT */
 

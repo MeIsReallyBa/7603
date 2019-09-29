@@ -28,38 +28,11 @@
 
 #ifdef RTMP_FLASH_SUPPORT
 
-#include	"rt_config.h"
-
-
-
-#ifdef  MT7603
-#define EEPROM_FILE_NAME                     "MT7603E1E2_EEPROM_layout_2014011_ePAeLNA.bin"
-#endif /* RT3090 */
-
-
-
-
-
-
-#define EEPROM_DFT_FILE_DIR	"/etc_ro/wlan/"
-#ifdef EEPROM_1ST_FILE_DIR
-#undef EEPROM_1ST_FILE_DIR
-#define EEPROM_1ST_FILE_DIR	"/etc_ro/Wireless/RT2860/"
-#endif
-#define EEPROM_2ND_FILE_DIR	"/etc_ro/Wireless/iNIC/"
-
-
-
-static NDIS_STATUS rtmp_ee_flash_init(PRTMP_ADAPTER pAd, PUCHAR start);
+#include "rt_config.h"
 
 static USHORT EE_FLASH_ID_LIST[]={
-
-
-
-
-
 #ifdef MT7603
-    0x7603,
+	0x7603,
 #endif
 };
 
@@ -356,7 +329,7 @@ static NDIS_STATUS rtmp_ee_flash_init(PRTMP_ADAPTER pAd, PUCHAR start)
 		RTMP_CAL_FREE_IC_CHECK(pAd,bCalFree);
 		if (bCalFree)
 		{
-			//MTWF_LOG(DBG_CAT_ALL, DBG_SUBCAT_ALL, DBG_LVL_TRACE, ("Cal Free IC!!\n"));
+			//DBGPRINT(RT_DEBUG_TRACE, ("Cal Free IC!!\n"));
 			DBGPRINT(RT_DEBUG_OFF, ("rtmp_ee_flash_init() Cal Free IC!!\n"));
 			RTMP_CAL_FREE_DATA_GET(pAd);
 		}

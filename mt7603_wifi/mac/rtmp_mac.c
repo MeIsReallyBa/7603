@@ -95,6 +95,7 @@ VOID dump_tmac_info(RTMP_ADAPTER *pAd, UCHAR *tmac_info)
 
 VOID dump_rmac_info(RTMP_ADAPTER *pAd, UCHAR *rmac_info)
 {
+#ifdef DBG
 	RXWI_STRUC *pRxWI = (RXWI_STRUC *)rmac_info;
 
 	hex_dump("RxWI Raw Data", (UCHAR *)pRxWI, pAd->chipCap.RXWISize);
@@ -109,6 +110,7 @@ VOID dump_rmac_info(RTMP_ADAPTER *pAd, UCHAR *rmac_info)
 	if (pAd->chipCap.hif_type == HIF_RTMP)
 		dump_rtmp_rxwi(pAd, pRxWI);
 #endif /* RTMP_MAC */
+#endif
 }
 
 
@@ -278,7 +280,7 @@ INT rtmp_mac_fifo_stat_update(RTMP_ADAPTER *pAd)
 			{			
 				DBGPRINT(RT_DEBUG_TRACE, ("#"));
 #ifdef DOT11_N_SUPPORT
-				pEntry->NoBADataCountDown = 64;
+				pEntry->NoBADataCountDown = 10;
 #endif /* DOT11_N_SUPPORT */
 
 
@@ -315,7 +317,7 @@ INT rtmp_mac_fifo_stat_update(RTMP_ADAPTER *pAd)
 #ifdef CONFIG_AP_SUPPORT
 #ifdef RTMP_MAC_PCI
 		/* if Tx fail >= 20, then clear TXWI ack in Tx Ring*/
-		if (pEntry->ContinueTxFailCnt >= pAd->ApCfg.EntryLifeCheck)
+		if (IS_ENTRY_CLIENT(pEntry) && pEntry->ContinueTxFailCnt >= pAd->ApCfg.EntryLifeCheck)
 			ClearTxRingClientAck(pAd, pEntry);	
 #endif /* RTMP_MAC_PCI */				
 #endif /* CONFIG_AP_SUPPORT */
@@ -892,12 +894,15 @@ VOID write_tmac_info(
 #endif /* RTMP_MAC */
 
 	NdisMoveMemory(pOutTxWI, &TxWI, TXWISize);
+
+#ifdef DBG
 //+++Add by shiang for debug
 if (0){
 	hex_dump("TxWI", (UCHAR *)pOutTxWI, TXWISize);
 	dump_tmac_info(pAd, (UCHAR *)pOutTxWI);
 }
 //---Add by shiang for debug
+#endif
 }
 
 

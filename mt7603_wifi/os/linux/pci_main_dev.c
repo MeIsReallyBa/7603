@@ -113,9 +113,6 @@ static int rt_pci_suspend(struct pci_dev *pci_dev, pm_message_t state)
 /*			RTMP_SET_FLAG(pAd, fRTMP_ADAPTER_RADIO_OFF); */
 			RTMP_DRIVER_PCI_SUSPEND(pAd);
 
-#ifdef CONFIG_RA_HW_NAT_WIFI_NEW_ARCH
-			RT_MOD_HNAT_DEREG(net_dev);
-#endif
 			/* take down the device */
 			rt28xx_close((PNET_DEV)net_dev);
 
@@ -212,9 +209,6 @@ static int rt_pci_resume(struct pci_dev *pci_dev)
 
 			/* increase MODULE use count */
 			RT_MOD_INC_USE_COUNT();
-#ifdef CONFIG_RA_HW_NAT_WIFI_NEW_ARCH
-			RT_MOD_HNAT_REG(net_dev);
-#endif
 
 /*			RTMP_CLEAR_FLAG(pAd, fRTMP_ADAPTER_HALT_IN_PROGRESS); */
 /*			RTMP_CLEAR_FLAG(pAd, fRTMP_ADAPTER_RADIO_OFF); */
@@ -240,7 +234,7 @@ static int DEVINIT rt_pci_probe(struct pci_dev *pdev, const struct pci_device_id
 {
 	void *pAd = NULL, *handle;
 	struct net_device *net_dev;
-	char *print_name;
+	const char *print_name;
 	unsigned long csr_addr;
 	int rv = 0;
 	RTMP_OS_NETDEV_OP_HOOK netDevHook;
@@ -257,7 +251,7 @@ static int DEVINIT rt_pci_probe(struct pci_dev *pdev, const struct pci_device_id
 	}
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,5,0)
-	print_name = (char *)pci_name(pdev);
+	print_name = pci_name(pdev);
 #else
 	print_name = pdev->slot_name;
 #endif /* LINUX_VERSION_CODE */
@@ -448,25 +442,21 @@ static struct pci_driver rt_pci_driver =
 int __init rt_pci_init_module(void)
 {
 	DBGPRINT(RT_DEBUG_ERROR, ("register %s\n", RTMP_DRV_NAME));
-/*
-	DBGPRINT(RT_DEBUG_ERROR, ("DriverVersion: 2.7.0.2-Beta-121007\n"
-								"\tBBP:120824\n"
-								"\tRF :120813\n"));
-*/
+
 	/*add for initial hook callback function linking list*/
 	RTMP_OS_TXRXHOOK_INIT();
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,5,0)
 	return pci_register_driver(&rt_pci_driver);
 #else
-    return pci_module_init(&rt_pci_driver);
+	return pci_module_init(&rt_pci_driver);
 #endif
 }
 
 
 void __exit rt_pci_cleanup_module(void)
 {
-    pci_unregister_driver(&rt_pci_driver);
+	pci_unregister_driver(&rt_pci_driver);
 }
 
 #ifndef MULTI_INF_SUPPORT

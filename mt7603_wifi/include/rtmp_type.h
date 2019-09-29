@@ -176,9 +176,6 @@ typedef struct _QUEUE_HEADER {
 	PQUEUE_ENTRY Head;
 	PQUEUE_ENTRY Tail;
 	UINT Number;
-#ifdef MAX_CONTINUOUS_TX_CNT
-	UINT8 AlreadyDeqCnt;/* Add a flag to record already De-queue count*/
-#endif
 } QUEUE_HEADER, *PQUEUE_HEADER;
 
 typedef struct _CR_REG {

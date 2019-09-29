@@ -38,9 +38,7 @@
 #include "ft_cmm.h"
 #endif /* DOT11R_FT_SUPPORT */
 
-#ifdef DOT11K_RRM_SUPPORT
-#include "dot11r_ft.h"
-#endif /* DOT11K_RRM_SUPPORT */
+
 
 /* maximum supported capability information - */
 /* ESS, IBSS, Privacy, Short Preamble, Spectrum mgmt, Short Slot */
@@ -82,7 +80,7 @@
 #endif /* MT7603_FPGA */
 #define SHORT_CHANNEL_TIME          90        /* unit: msec */
 #define MIN_CHANNEL_TIME            110        /* unit: msec, for dual band scan */
-#define MAX_CHANNEL_TIME            140       /* unit: msec, for single band scan */
+#define MAX_CHANNEL_TIME            200       /* 140 */ /* unit: msec, for single band scan */
 #define FAST_ACTIVE_SCAN_TIME	    30 		  /* Active scan waiting for probe response time */
 
 #define AUTO_CHANNEL_SEL_TIMEOUT		400		/* uint: msec */
@@ -193,11 +191,7 @@ enum SCAN_MODE{
 #define ERP_IS_USE_PROTECTION(x)         (((x) & 0x02) != 0)    /* 802.11g */
 #define ERP_IS_USE_BARKER_PREAMBLE(x)    (((x) & 0x04) != 0)    /* 802.11g */
 
-#ifdef INTERFERENCE_RA_SUPPORT
-#define DRS_TX_QUALITY_WORST_BOUND       4
-#else
 #define DRS_TX_QUALITY_WORST_BOUND       8/* 3  // just test by gary */
-#endif
 #define DRS_PENALTY                      8
 
 #define BA_NOTUSE 	2
@@ -383,8 +377,29 @@ typedef struct GNU_PACKED _EXT_CAP_INFO_ELEMENT{
 	UINT32 operating_mode_notification:1;
 	UINT32 rsv63:1;
 #endif // RT_BIG_ENDIAN //
+
+#ifdef RT_BIG_ENDIAN
+	UINT8 ftm_init:1;	/* bit71: FTM Initiator in 802.11mc D4.0*/
+	UINT8 ftm_resp:1;	/* bit70: FTM responder */
+	UINT8 rsv69:1;
+	UINT8 rsv68:1;
+	UINT8 rsv67:1;
+	UINT8 rsv66:1;
+	UINT8 rsv65:1;
+	UINT8 rsv64:1;
+#else
+	UINT8 rsv64:1;
+	UINT8 rsv65:1;
+	UINT8 rsv66:1;
+	UINT8 rsv67:1;
+	UINT8 rsv68:1;
+	UINT8 rsv69:1;
+	UINT8 ftm_resp:1;	/* bit70: FTM responder */
+	UINT8 ftm_init:1;	/* bit71: FTM Initiator in 802.11mc D4.0*/
+#endif // RT_BIG_ENDIAN //
 }EXT_CAP_INFO_ELEMENT, *PEXT_CAP_INFO_ELEMENT;
 
+#define EXT_CAP_MIN_SAFE_LENGTH         8
 
 /* 802.11n 7.3.2.61 */
 typedef struct GNU_PACKED _BSS_2040_COEXIST_ELEMENT{
@@ -816,39 +831,7 @@ typedef	struct _CIPHER_SUITE {
 	USHORT							RsnCapability;	/* RSN capability from beacon */
 	BOOLEAN							bMixMode;		/* Indicate Pair & Group cipher might be different */
 }	CIPHER_SUITE, *PCIPHER_SUITE;
-
-
-#if defined(MWDS) || defined(WH_EVENT_NOTIFIER) || defined(WH_EZ_SETUP)
-struct _vendor_ie_cap {
-    ULONG ra_cap;
-    ULONG mtk_cap;
-    ULONG brcm_cap;
-    ULONG quant_cap;
-    BOOLEAN ldpc;
-    BOOLEAN sgi;
-    BOOLEAN is_rlt;
-    BOOLEAN is_mtk;
-    BOOLEAN is_quant;
-#ifdef WH_EZ_SETUP
-	UINT ez_capability;
-#ifdef NEW_CONNECTION_ALGO
-	UCHAR open_group_id[OPEN_GROUP_MAX_LEN];
-	UCHAR open_group_id_len;
-	beacon_info_tag_t beacon_info;
-	BOOLEAN non_ez_beacon;
-#endif
-    BOOLEAN support_easy_setup;
-#endif /* WH_EZ_SETUP */
-#ifdef MWDS
-    BOOLEAN mtk_cap_found;
-    BOOLEAN support_mwds;
-#endif /* MWDS */
-#ifdef WH_EVENT_NOTIFIER
-    UCHAR custom_ie_len;
-    UCHAR custom_ie[CUSTOM_IE_TOTAL_LEN];
-#endif /* WH_EVENT_NOTIFIER */
-};
-#endif
+	
 
 /* EDCA configuration from AP's BEACON/ProbeRsp */
 #define WMM_AC_BK	0
@@ -971,7 +954,8 @@ typedef struct _BSS_ENTRY{
 	CHAR MinSNR;	
 	UCHAR Privacy;			/* Indicate security function ON/OFF. Don't mess up with auth mode. */
 	UCHAR Hidden;
-	BOOLEAN FromBcnReport;
+
+	BOOLEAN FromBcnReport; //source from beacon report
 	USHORT DtimPeriod;
 	USHORT CapabilityInfo;
 
@@ -1025,32 +1009,16 @@ typedef struct _BSS_ENTRY{
 	USHORT WscDPIDFromWpsAP;
 #endif /* WSC_INCLUDED */
 
+
 #if defined(DOT11R_FT_SUPPORT) || defined(DOT11K_RRM_SUPPORT)
 	BOOLEAN	 bHasMDIE;
 	FT_MDIE FT_MDIE;
-#endif /* DOT11R_FT_SUPPORT || DOT11K_RRM_SUPPORT */
-
-
-
-#ifdef WH_EZ_SETUP
-    unsigned char support_easy_setup;
-    unsigned int easy_setup_capability;
-    BOOLEAN     bConnectAttemptFailed;
-	BOOLEAN non_ez_beacon;
-#ifdef NEW_CONNECTION_ALGO
-    UCHAR open_group_id[OPEN_GROUP_MAX_LEN];
-    UCHAR open_group_id_len;
-    beacon_info_tag_t beacon_info;
-#endif
-#endif /* WH_EZ_SETUP */
+#endif /* defined(DOT11R_FT_SUPPORT) || defined(DOT11K_RRM_SUPPORT) */
 
 #ifdef DOT11K_RRM_SUPPORT
 	UINT8 RegulatoryClass;
 	UINT8 CondensedPhyType;
 	UINT8 RSNI;
-#endif /* DOT11K_RRM_SUPPORT */
-#ifdef MWDS
-	BOOLEAN		bSupportMWDS; 		/* Determine If own MWDS capability */
 #endif /* DOT11K_RRM_SUPPORT */
 } BSS_ENTRY;
 
@@ -1081,11 +1049,6 @@ typedef struct _MLME_QUEUE_ELEM {
 	ULONG Priv;
 } MLME_QUEUE_ELEM, *PMLME_QUEUE_ELEM;
 
-#ifdef WH_EZ_SETUP
-#define IMM_DISCONNECT	(BIT(15))	
-	/* If this bit is set in 'Priv' of MLME_QUEUE_ELEM, during disconenct request to MLME,
-		the request will be processed immediately*/
-#endif
 
 #ifdef EAPOL_QUEUE_SUPPORT
 typedef struct _EAP_MLME_QUEUE {
@@ -1174,7 +1137,7 @@ typedef struct _MLME_AUX {
 	UCHAR vht_op_len;
 	VHT_CAP_IE vht_cap;
 	VHT_OP_IE vht_op;
-	UCHAR vht_cent_ch;
+//	UCHAR vht_cent_ch;
 #endif /* DOT11_VHT_AC */
 
     /* new for QOS */
@@ -1200,17 +1163,15 @@ typedef struct _MLME_AUX {
     UCHAR               VarIEs[MAX_VIE_LEN];
     LONG				Rssi; /* Record the rssi value when receive Probe Rsp. */
 	RALINK_TIMER_STRUCT ProbeTimer, ApCliAssocTimer, ApCliAuthTimer;
+	RALINK_TIMER_STRUCT WpaDisassocAndBlockAssocTimer;
+#ifdef DOT11W_PMF_SUPPORT
+	RSN_CAPABILITIES	RsnCap;
+	BOOLEAN			IsSupportSHA256KeyDerivation;
+#endif /* DOT11W_PMF_SUPPORT */
 #endif /* APCLI_SUPPORT */
 #endif /* CONFIG_AP_SUPPORT */
 
 
-#ifdef WH_EZ_SETUP
-	BOOLEAN support_easy_setup;
-	UINT8 attempted_candidate_index; /* with respect to entries in SsidBssTab*/
-#endif /* WH_EZ_SETUP */
-#ifdef MWDS
-	BOOLEAN		bSupportMWDS; 		/* Determine If own MWDS capability */
-#endif /* MWDS */
 } MLME_AUX, *PMLME_AUX;
 
 
@@ -1293,14 +1254,6 @@ typedef struct _MLME_DEAUTH_REQ_STRUCT {
     USHORT       Reason;
 } MLME_DEAUTH_REQ_STRUCT, *PMLME_DEAUTH_REQ_STRUCT;
 
-#if (defined(WH_EZ_SETUP) && defined(EZ_NETWORK_MERGE_SUPPORT))
-typedef struct _MLME_BROADCAST_DEAUTH_REQ_STRUCT {
-    UCHAR        		Addr[MAC_ADDR_LEN];
-    USHORT       		Reason;
-	struct wifi_dev  	*wdev;
-} MLME_BROADCAST_DEAUTH_REQ_STRUCT, *PMLME_BROADCAST_DEAUTH_REQ_STRUCT;
-#endif
-
 typedef struct {
     ULONG      BssIdx;
 } MLME_JOIN_REQ_STRUCT;
@@ -1337,7 +1290,7 @@ typedef struct GNU_PACKED _EID_STRUCT{
 /*#define TX_WEIGHTING                     40 */
 /*#define RX_WEIGHTING                     60 */
 
-#define MAC_TABLE_AGEOUT_TIME			300			/* unit: sec */
+#define MAC_TABLE_AGEOUT_TIME			240			/* unit: sec */
 #define MAC_TABLE_MIN_AGEOUT_TIME		60			/* unit: sec */
 #define MAC_TABLE_ASSOC_TIMEOUT			5			/* unit: sec */
 #define MAC_TABLE_FULL(Tab)				((Tab).size == MAX_LEN_OF_MAC_TABLE)
@@ -1362,7 +1315,6 @@ typedef enum _AuthState {
 
 
 typedef struct _IE_lists {
-	UCHAR Addr1[MAC_ADDR_LEN];
 	UCHAR Addr2[MAC_ADDR_LEN];
 	UCHAR ApAddr[MAC_ADDR_LEN];
 	USHORT CapabilityInfo;
@@ -1377,9 +1329,6 @@ typedef struct _IE_lists {
 #ifdef WSC_AP_SUPPORT
 	BOOLEAN bWscCapable;
 #endif /* WSC_AP_SUPPORT */
-#if defined(MWDS) || defined(WH_EVENT_NOTIFIER)
-	struct _vendor_ie_cap vendor_ie;
-#endif
 	ULONG RalinkIe;
 	EXT_CAP_INFO_ELEMENT ExtCapInfo;
 #ifdef DOT11R_FT_SUPPORT
@@ -1428,9 +1377,6 @@ typedef struct _bcn_ie_list {
 	EDCA_PARM EdcaParm;
 	QBSS_LOAD_PARM QbssLoad;
 	QOS_CAPABILITY_PARM QosCapability;
-#if defined(WH_EZ_SETUP) || defined(MWDS)
-    struct _vendor_ie_cap vendor_ie;
-#endif //WH_EZ_SETUP
 	ULONG RalinkIe;
 	EXT_CAP_INFO_ELEMENT ExtCapInfo;
 	UCHAR HtCapabilityLen;
@@ -1445,7 +1391,7 @@ typedef struct _bcn_ie_list {
 	UCHAR vht_cap_len;
 	UCHAR vht_op_len;
 #endif /* DOT11_VHT_AC */
-	BOOLEAN FromBcnReport;
+	BOOLEAN  FromBcnReport;
 }BCN_IE_LIST;
 
 VOID MlmeHandler(struct _RTMP_ADAPTER *pAd);

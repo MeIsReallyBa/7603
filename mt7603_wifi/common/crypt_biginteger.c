@@ -864,10 +864,7 @@ VOID BigInteger_Div (
             MulStart = MulStart | (BigInteger_GetByteValue((*pBI_Remainder), pFirstOperand->IntegerLength + Index - ComputeSize) & 0xFF);
             if (MulStart < (UINT32) SecondHighByte)
                 continue;
-			
-			if (SecondHighByte == 0)
-				break;
-			
+
             MulStart = MulStart / (UINT32) SecondHighByte;
 
             if (MulStart > 0xFF)

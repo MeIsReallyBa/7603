@@ -32,8 +32,6 @@
 #include "ft_cmm.h"
 #endif /* DOT11R_FT_SUPPORT */
 
-INT ap_security_init(RTMP_ADAPTER *pAd, struct wifi_dev *wdev, INT idx);
-INT ap_mlme_set_capability(RTMP_ADAPTER *pAd, BSS_STRUCT *pMbss);
 
 
 /* ============================================================= */
@@ -173,33 +171,6 @@ VOID APSyncStateMachineInit(
     IN STATE_MACHINE *Sm,
     OUT STATE_MACHINE_FUNC Trans[]);
 
-UCHAR get_regulatory_class(RTMP_ADAPTER *pAd);
-
-#ifdef WH_EZ_SETUP
-#ifdef EZ_MOD_SUPPORT
-VOID EzStateMachineInit(
-	IN RTMP_ADAPTER *pAd,
-	IN STATE_MACHINE *Sm,
-	OUT STATE_MACHINE_FUNC Trans[]);
-#else
-VOID EzRoamStateMachineInit(
-	IN RTMP_ADAPTER *pAd,
-	IN STATE_MACHINE *Sm,
-	OUT STATE_MACHINE_FUNC Trans[]);
-
-VOID APTriBandStateMachineInit(
-	IN RTMP_ADAPTER *pAd,
-	IN STATE_MACHINE *Sm,
-	OUT STATE_MACHINE_FUNC Trans[]);
-#endif
-INT ap_phy_rrm_init(RTMP_ADAPTER *pAd);
-
-INT ap_security_init(RTMP_ADAPTER *pAd, struct wifi_dev *wdev, INT idx);
-
-INT ap_key_tb_init(RTMP_ADAPTER *pAd);
-
-#endif
-
 VOID APScanTimeout(
 	IN PVOID SystemSpecific1,
 	IN PVOID FunctionContext,
@@ -210,11 +181,7 @@ VOID ApSiteSurvey(
 	IN	PRTMP_ADAPTER  		pAd,
 	IN	PNDIS_802_11_SSID	pSsid,
 	IN	UCHAR				ScanType,
-	IN	BOOLEAN				ChannelSel
-#ifdef WH_EZ_SETUP
-   ,IN 	struct wifi_dev 	*wdev
-#endif
-);
+	IN	BOOLEAN				ChannelSel);
 
 VOID SupportRate(
 	IN PUCHAR SupRate,
@@ -227,11 +194,6 @@ VOID SupportRate(
 
 
 BOOLEAN ApScanRunning(RTMP_ADAPTER *pAd);
-
-#ifdef AP_PARTIAL_SCAN_SUPPORT
-UCHAR FindPartialScanChannel(
-	IN PRTMP_ADAPTER pAd);
-#endif /* AP_PARTIAL_SCAN_SUPPORT */
 
 #ifdef DOT11_N_SUPPORT
 VOID APUpdateOperationMode(RTMP_ADAPTER *pAd);
@@ -303,12 +265,7 @@ VOID APUpdateCapabilityAndErpIe(RTMP_ADAPTER *pAd);
 
 BOOLEAN ApCheckAccessControlList(RTMP_ADAPTER *pAd, UCHAR *addr, UCHAR apidx);
 VOID ApUpdateAccessControlList(RTMP_ADAPTER *pAd, UCHAR apidx);
-#ifdef STA_FORCE_ROAM_SUPPORT
-BOOLEAN ApCheckFroamAccessControlList(
-	IN PRTMP_ADAPTER pAd,
-	IN PUCHAR        pAddr,
-	IN UCHAR         Apidx);
-#endif
+
 
 #ifdef AP_QLOAD_SUPPORT
 VOID QBSS_LoadInit(RTMP_ADAPTER *pAd);
@@ -349,23 +306,11 @@ VOID IAPP_L2_UpdatePostCtrl(RTMP_ADAPTER *pAd, UINT8 *mac, INT wdev_idx);
 #ifdef AIRPLAY_SUPPORT
 #define AIRPLAY_ON(_pAd)          ((_pAd)->bAirplayEnable == 1)
 #endif /* AIRPLAY_SUPPORT*/
-#ifdef STA_FORCE_ROAM_SUPPORT
 
-
-#define FROAM_SUPP_DEF			FALSE // TRUE by default?
-#define STA_LOW_RSSI			65	// absolute
-#define STA_DETECT_RSSI			55	// absolute
-#define	STALIST_AGEOUT_TIME 	5	// sec
-#define	MNTRLIST_AGEOUT_TIME 	4	// sec
-#define	MNTR_MIN_PKT_COUNT 		5
-#define	MNTR_MIN_TIME 			1	// sec
-#define	AVG_RSSI_PKT_COUNT 		5
-#define	ACLLIST_AGEOUT_TIME 	4	// sec
-#define	ACLLIST_HOLD_TIME 		2	// sec
-
-void load_froam_defaults(RTMP_ADAPTER *pAd);
-void froam_notify_sta_disconnect(void *ad_obj, void *pEntry);
-#endif
+BOOLEAN IAPP_L2_Update_Frame_Send(
+	IN PRTMP_ADAPTER	pAd,
+    IN UINT8 *mac_p,
+    IN INT  bssid);
 
 #endif  /* __AP_H__ */
 

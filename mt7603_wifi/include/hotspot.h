@@ -61,14 +61,12 @@ typedef struct GNU_PACKED _HSCTRL_EVENT_DATA {
 typedef struct _HOTSPOT_CTRL {
 	UINT32 HSIndicationIELen;
 	UINT32 P2PIELen;
-	/*UINT32 InterWorkingIELen;
+	UINT32 InterWorkingIELen;
 	UINT32 AdvertisementProtoIELen;
-	*/
 	UINT32 QosMapSetIELen;
 	UINT32 RoamingConsortiumIELen;
-	/*PUCHAR InterWorkingIE;
+	PUCHAR InterWorkingIE;
 	PUCHAR AdvertisementProtoIE;
-	*/
 	PUCHAR QosMapSetIE;
 	USHORT DscpRange[8];
 	USHORT DscpException[21];	
@@ -86,7 +84,7 @@ typedef struct _HOTSPOT_CTRL {
 	BOOLEAN ICMPv4Deny;
 	UINT32 MMPDUSize;
 	BOOLEAN QosMapEnable;
-/* BOOLEAN bNonTX;	0:enable TX, 1:disable TX*/
+//	BOOLEAN bNonTX;	/* 0:enable TX, 1:disable TX*/
 	BOOLEAN bASANEnable;		/* 1:enable ASAN IE, 1:disable ASAN IE*/
 	UCHAR  	QLoadTestEnable;	/* for BSS Load IE Test */
 	UCHAR  	QLoadCU;			/* for BSS Load IE Test */
@@ -99,7 +97,7 @@ enum {
 	L2FilterExternal,
 };
 
-/*enum {
+enum {
 	PARAM_DGAF_DISABLED,
 	PARAM_PROXY_ARP,
 	PARAM_L2_FILTER,
@@ -109,8 +107,7 @@ enum {
 	PARAM_GAS_COME_BACK_DELAY,
 	PARAM_WNM_NOTIFICATION,
 	PARAM_QOSMAP,
-}; move to wapp_cmm_type.h
-*/
+};
 
 BOOLEAN L2FilterInspection(
 			IN PRTMP_ADAPTER pAd,

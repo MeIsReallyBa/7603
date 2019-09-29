@@ -25,12 +25,10 @@
 */
 
 #include <rt_config.h>
-#ifdef ANDLINK_FEATURE_SUPPORT
-#include <linux/time.h>
-#endif
+
 
 #ifdef DBG
-VOID dump_tr_entry(RTMP_ADAPTER *pAd, INT tr_idx, RTMP_STRING *caller, INT line)
+VOID dump_tr_entry(RTMP_ADAPTER *pAd, INT tr_idx, const RTMP_STRING *caller, INT line)
 {
 	STA_TR_ENTRY *tr_entry;
 	INT qidx;
@@ -111,14 +109,13 @@ VOID tr_tb_set_entry(RTMP_ADAPTER *pAd, UCHAR tr_tb_idx, MAC_TABLE_ENTRY *pEntry
 {
 	struct _STA_TR_ENTRY *tr_entry;
 	INT qidx, tid,upId;
-    //MAC_TABLE_ENTRY *mac_entry;
-    struct wtbl_entry tb_entry;
-    //struct wtbl_2_struc *wtbl_2;
+	struct wtbl_entry tb_entry;
 
 	if (tr_tb_idx < MAX_LEN_OF_TR_TABLE)
 	{
 		tr_entry = &pAd->MacTab.tr_entry[tr_tb_idx];
 
+		pEntry->tr_tb_idx = tr_tb_idx;
 		tr_entry->EntryType = pEntry->EntryType;
 		tr_entry->wdev = pEntry->wdev;
 		tr_entry->func_tb_idx = pEntry->func_tb_idx;
@@ -171,10 +168,16 @@ VOID tr_tb_set_entry(RTMP_ADAPTER *pAd, UCHAR tr_tb_idx, MAC_TABLE_ENTRY *pEntry
 
 VOID tr_tb_set_mcast_entry(RTMP_ADAPTER *pAd, UCHAR tr_tb_idx, struct wifi_dev *wdev)
 {
-	struct _STA_TR_ENTRY *tr_entry = &pAd->MacTab.tr_entry[tr_tb_idx];
+	struct _STA_TR_ENTRY *tr_entry = NULL;
 	INT qidx, tid;
 
-	NdisZeroMemory(tr_entry, sizeof(struct _STA_TR_ENTRY));
+	if (tr_tb_idx > MAX_LEN_OF_TR_TABLE)
+		return;
+
+	tr_entry = &pAd->MacTab.tr_entry[tr_tb_idx];
+
+	if (!tr_entry)
+		return;
 
 	tr_entry->EntryType = ENTRY_CAT_MCAST;
 	tr_entry->wdev = wdev;
@@ -195,6 +198,7 @@ VOID tr_tb_set_mcast_entry(RTMP_ADAPTER *pAd, UCHAR tr_tb_idx, struct wifi_dev *
 		InitializeQueueHeader(&tr_entry->tx_queue[qidx]);
 		NdisAllocateSpinLock(pAd, &tr_entry->txq_lock[qidx]);
 	}
+
 	InitializeQueueHeader(&tr_entry->ps_queue);
 	NdisAllocateSpinLock(pAd, &tr_entry->ps_queue_lock);
 	tr_entry->deq_cnt = 0;
@@ -208,15 +212,27 @@ VOID tr_tb_set_mcast_entry(RTMP_ADAPTER *pAd, UCHAR tr_tb_idx, struct wifi_dev *
 	tr_entry->high_pkt_drop_cnt = 0;
 #endif /* DATA_QUEUE_RESERVE */
 
+    /*
+        Carter check,
+        if Mcast pkt will reference the bssid field for do something?
+        if so, need to check flow.
+    */
 	NdisMoveMemory(tr_entry->bssid, wdev->bssid, MAC_ADDR_LEN);
-	
 }
 
 
 // TODO: this function not finish yet!!
 VOID mgmt_tb_set_mcast_entry(RTMP_ADAPTER *pAd, UCHAR wcid)
 {
-	MAC_TABLE_ENTRY *pEntry = &pAd->MacTab.Content[MCAST_WCID];
+	MAC_TABLE_ENTRY *pEntry;
+
+	if(wcid >=MAX_LEN_OF_MAC_TABLE)
+	{
+		DBGPRINT(RT_DEBUG_OFF, ("%s: wcid out of boundary!\n", __FUNCTION__));
+		return;
+	}
+
+	pEntry= &pAd->MacTab.Content[wcid];
 
 	pEntry->EntryType = ENTRY_CAT_MCAST;
 	pEntry->Sst = SST_ASSOC;
@@ -230,7 +246,7 @@ VOID mgmt_tb_set_mcast_entry(RTMP_ADAPTER *pAd, UCHAR wcid)
 	pEntry->HTPhyMode.field.MCS = 3;
 
 	NdisMoveMemory(pEntry->Addr, &BROADCAST_ADDR[0], MAC_ADDR_LEN);
-	
+
 #ifdef CONFIG_AP_SUPPORT
 	IF_DEV_CONFIG_OPMODE_ON_AP(pAd){
 		pEntry->wdev = &pAd->ApCfg.MBSSID[MAIN_MBSSID].wdev;
@@ -268,14 +284,17 @@ VOID set_sta_ra_cap(RTMP_ADAPTER *pAd, MAC_TABLE_ENTRY *ent, ULONG ra_ie)
 	CLIENT_CAP_CLEAR_FLAG(ent, fCLIENT_STATUS_RALINK_CHIPSET);
 	CLIENT_CAP_CLEAR_FLAG(ent, fCLIENT_STATUS_AGGREGATION_CAPABLE);
 	CLIENT_CAP_CLEAR_FLAG(ent, fCLIENT_STATUS_PIGGYBACK_CAPABLE);
+	CLIENT_CAP_CLEAR_FLAG(ent, fCLIENT_STATUS_RDG_CAPABLE);
 
 	CLIENT_STATUS_CLEAR_FLAG(ent, fCLIENT_STATUS_RALINK_CHIPSET);
 	CLIENT_STATUS_CLEAR_FLAG(ent, fCLIENT_STATUS_AGGREGATION_CAPABLE);
 	CLIENT_STATUS_CLEAR_FLAG(ent, fCLIENT_STATUS_PIGGYBACK_CAPABLE);
+	CLIENT_STATUS_CLEAR_FLAG(ent, fCLIENT_STATUS_RDG_CAPABLE);
 	
 	/* Set cap flags */
 	if (ra_ie != 0x0) {
 		CLIENT_CAP_SET_FLAG(ent, fCLIENT_STATUS_RALINK_CHIPSET);
+		CLIENT_STATUS_SET_FLAG(ent, fCLIENT_STATUS_RALINK_CHIPSET);
 
 #ifdef AGGREGATION_SUPPORT
 		if (ra_ie & 0x00000001)
@@ -307,7 +326,6 @@ VOID set_sta_ra_cap(RTMP_ADAPTER *pAd, MAC_TABLE_ENTRY *ent, ULONG ra_ie)
 		DBGPRINT(RT_DEBUG_TRACE, ("PiggyBack= 1\n"));
 	}
 #endif /* PIGGYBACK_SUPPORT */
-
 }
 
 
@@ -338,37 +356,6 @@ MAC_TABLE_ENTRY *MacTableLookup(RTMP_ADAPTER *pAd, UCHAR *pAddr)
 	return pEntry;
 }
 
-#ifdef WH_EZ_SETUP
-MAC_TABLE_ENTRY *MacTableLookup2(RTMP_ADAPTER *pAd, UCHAR *pAddr, struct wifi_dev *wdev)
-{
-	ULONG HashIdx;
-	MAC_TABLE_ENTRY *pEntry = NULL;
-
-	HashIdx = MAC_ADDR_HASH_INDEX(pAddr);
-	pEntry = pAd->MacTab.Hash[HashIdx];
-
-    if (wdev){
-    	while (pEntry && !IS_ENTRY_NONE(pEntry))
-    	{
-    		if (MAC_ADDR_EQUAL(pEntry->Addr, pAddr) && (pEntry->wdev == wdev))
-    			break;
-    		else
-    			pEntry = pEntry->pNext;
-    	}
-    }
-    else{
-    	while (pEntry && !IS_ENTRY_NONE(pEntry))
-    	{
-    		if (MAC_ADDR_EQUAL(pEntry->Addr, pAddr))
-    			break;
-    		else
-    			pEntry = pEntry->pNext;
-    	}
-    }
-    
-	return pEntry;
-}
-#endif
 
 
 
@@ -435,14 +422,7 @@ MAC_TABLE_ENTRY *MacTableInsertEntry(
 			pEntry->bIAmBadAtheros = FALSE;
 			pEntry->pAd = pAd;
 			pEntry->CMTimerRunning = FALSE;
-#ifdef ANDLINK_FEATURE_SUPPORT
-			ANDLINK_GET_CURRENT_SEC(&pEntry->upTime);
-			DBGPRINT(RT_DEBUG_OFF, ("%s: Set entry UpTime %llu(s)<-------\n\n", __FUNCTION__, 
-				(ULONGLONG)pEntry->upTime));
-#endif
-#ifdef FAST_DETECT_STA_OFF
-			pEntry->detect_deauth = FALSE;
-#endif
+
 			COPY_MAC_ADDR(pEntry->Addr, pAddr);
 			pEntry->Sst = SST_NOT_AUTH;
 			pEntry->AuthState = AS_NOT_AUTH;
@@ -473,7 +453,8 @@ MAC_TABLE_ENTRY *MacTableInsertEntry(
 			pEntry->RSNIE_Len = 0;
 			NdisZeroMemory(pEntry->R_Counter, sizeof(pEntry->R_Counter));
 			pEntry->ReTryCounter = PEER_MSG1_RETRY_TIMER_CTR;
-			tr_entry->PortSecured = WPA_802_1X_PORT_NOT_SECURED;			
+			tr_entry->PortSecured = WPA_802_1X_PORT_NOT_SECURED;
+			pEntry->AllowInsPTK = TRUE;
 
 			do
 			{
@@ -497,11 +478,6 @@ MAC_TABLE_ENTRY *MacTableInsertEntry(
 						pEntry->WpaState = AS_PTKSTART;
 						pEntry->PrivacyFilter = Ndis802_11PrivFilter8021xWEP;
 					}
-#ifdef ROAMING_ENHANCE_SUPPORT
-#ifdef APCLI_SUPPORT
-						pEntry->bRoamingRefreshDone = FALSE;
-#endif /* APCLI_SUPPORT */
-#endif /* ROAMING_ENHANCE_SUPPORT */
 					break;
 				}
 #endif /* APCLI_SUPPORT */
@@ -532,9 +508,6 @@ MAC_TABLE_ENTRY *MacTableInsertEntry(
 					}
 					
 
-					if (pEntry->func_tb_idx >= HW_BEACON_MAX_NUM)
-						return NULL;
-
 					ASSERT((wdev == &pAd->ApCfg.MBSSID[pEntry->func_tb_idx].wdev));
 
 					SET_ENTRY_CLIENT(pEntry);
@@ -556,24 +529,8 @@ MAC_TABLE_ENTRY *MacTableInsertEntry(
 					pAd->ApCfg.MBSSID[pEntry->func_tb_idx].StaCount++;
 					pAd->ApCfg.EntryClientCount++;
 
-#ifdef WH_EVENT_NOTIFIER
-					pEntry->tx_state.CurrentState = WHC_STA_STATE_ACTIVE;
-					pEntry->rx_state.CurrentState = WHC_STA_STATE_ACTIVE;
-#endif /* WH_EVENT_NOTIFIER */
-
-#if (defined(WH_EZ_SETUP) && defined(EZ_DUAL_BAND_SUPPORT))
-					pEntry->link_duplicate = FALSE;
-#endif
 					break;
 				}
-#ifdef AIR_MONITOR
-				else if (ent_type == ENTRY_MONITOR)
-				{
-					SET_ENTRY_MONITOR(pEntry);
-					break;
-				}
-#endif /* AIR_MONITOR */	
-				
 #endif /* CONFIG_AP_SUPPORT */
 
 			} while (FALSE);
@@ -606,7 +563,14 @@ MAC_TABLE_ENTRY *MacTableInsertEntry(
 
 #ifdef APCLI_SUPPORT
 				if (IS_ENTRY_APCLI(pEntry))
+				{
 					RTMPInitTimer(pAd, &pEntry->RetryTimer, GET_TIMER_FUNCTION(WPARetryExec), pEntry, FALSE);
+#ifdef DOT11W_PMF_SUPPORT
+					RTMPInitTimer(pAd, &pEntry->SAQueryTimer, GET_TIMER_FUNCTION(PMF_SAQueryTimeOut), pEntry, FALSE);
+					RTMPInitTimer(pAd, &pEntry->SAQueryConfirmTimer, GET_TIMER_FUNCTION(PMF_SAQueryConfirmTimeOut), pEntry, FALSE);
+#endif /* DOT11W_PMF_SUPPORT */
+					
+				}
 #endif /* APCLI_SUPPORT */
 			}
 #endif /* CONFIG_AP_SUPPORT */
@@ -692,18 +656,9 @@ MAC_TABLE_ENTRY *MacTableInsertEntry(
 			}
 #endif /* WSC_AP_SUPPORT */
 
-#if (MT7615_MT7603_COMBO_FORWARDING == 1)
-#if defined(CONFIG_WIFI_PKT_FWD) || defined(CONFIG_WIFI_PKT_FWD_MODULE)
-		if(IS_ENTRY_CLIENT(pEntry) && 
-		   wf_fwd_add_entry_inform_hook)
-		{
-		   wf_fwd_add_entry_inform_hook(pEntry->Addr);
 		}
-#endif /* CONFIG_WIFI_PKT_FWD */
-		
 #endif /* CONFIG_AP_SUPPORT */
-	}
-#endif
+
 
 	}
 
@@ -758,11 +713,9 @@ BOOLEAN MacTableDeleteEntry(RTMP_ADAPTER *pAd, USHORT wcid, UCHAR *pAddr)
 	MAC_TABLE_ENTRY *pEntry;
 	STA_TR_ENTRY *tr_entry;
 	BOOLEAN Cancelled;
-#if defined(MBO_SUPPORT)
-	UCHAR TmpAddrForIndicate[MAC_ADDR_LEN] = {0};
-	BOOLEAN bIndicateSendEvent = FALSE;
-#endif/* defined(MBO_SUPPORT) */
-	struct wifi_dev *wdev = NULL;
+
+	if (!pAd)
+		return FALSE;
 
 	if (wcid >= MAX_LEN_OF_MAC_TABLE)
 		return FALSE;
@@ -774,16 +727,9 @@ BOOLEAN MacTableDeleteEntry(RTMP_ADAPTER *pAd, USHORT wcid, UCHAR *pAddr)
 
 	if (pEntry && !IS_ENTRY_NONE(pEntry))
 	{
-#ifdef BAND_STEERING
-		if((pAd->ApCfg.BandSteering) && IS_ENTRY_CLIENT(pEntry) && IS_VALID_MAC(pEntry->Addr))
-			BndStrg_UpdateEntry(pAd, pEntry, NULL, FALSE);
-#endif
 #ifdef CONFIG_WIFI_PKT_FWD
 		if(wf_fwd_delete_entry_inform_hook)
 			wf_fwd_delete_entry_inform_hook(pEntry->Addr);
-#endif /* CONFIG_WIFI_PKT_FWD */
-#ifdef MWDS
-		MWDSAPPeerDisable(pAd, pEntry);
 #endif /* CONFIG_WIFI_PKT_FWD */
 
 #ifdef MT_PS
@@ -791,49 +737,17 @@ BOOLEAN MacTableDeleteEntry(RTMP_ADAPTER *pAd, USHORT wcid, UCHAR *pAddr)
 		tr_entry->ps_state = APPS_RETRIEVE_IDLE;
 		OS_WAIT(2); /* Wait FW command arriving at MCU. */
 #endif /* MT_PS */
-		/*get wdev*/
-		wdev = pEntry->wdev;
 
 #ifdef CONFIG_AP_SUPPORT
 #ifdef MT_MAC
 #ifdef WSC_INCLUDED
-/* Try to always cancel all timer inside MacTableDeleteEntry.
- * Required to prevent re-init for this timer when already
- * being in active state. 
- */
-/*		if (pEntry->bEapReqIdRetryTimerRunning)
+		if (pEntry->bEapReqIdRetryTimerRunning)
 		{
-*/
-		RTMPCancelTimer(&pEntry->EapReqIdRetryTimer, &Cancelled);
+			RTMPCancelTimer(&pEntry->EapReqIdRetryTimer, &Cancelled);
 			pEntry->bEapReqIdRetryTimerRunning = FALSE;
-/*
 		}
-*/
-		#endif /* WSC_INCLUDED */
+#endif /* WSC_INCLUDED */
 #endif /* MT_MAC */
-#ifdef STA_FORCE_ROAM_SUPPORT
-
-		if(((PRTMP_ADAPTER)(pEntry->wdev->sys_handle))->en_force_roam_supp && IS_ENTRY_CLIENT(pEntry)
-#ifdef WH_EZ_SETUP
-			&& (IS_EZ_SETUP_ENABLED(pEntry->wdev) && !pEntry->easy_setup_enabled)
-#endif		
-		){
-			if(pEntry->low_rssi_notified){
-				DBGPRINT(RT_DEBUG_OFF, 
-					("MacTableDeleteEntry: Notify to ForceRoam App \n"));
-				froam_notify_sta_disconnect(pAd, pEntry);
-			}
-		}
-#endif
-
-#ifdef WH_EVENT_NOTIFIER
-		{
-			EventHdlr pEventHdlrHook = NULL;
-			pEventHdlrHook = GetEventNotiferHook(WHC_DRVEVNT_STA_LEAVE);
-			if(pEventHdlrHook && pEntry->wdev)
-				pEventHdlrHook(pAd, pEntry->wdev, pAddr, pAd->CommonCfg.Channel);
-		}
-#endif /* WH_EVENT_NOTIFIER */
 
 		WLAN_MR_TIM_BIT_CLEAR(pAd, pEntry->func_tb_idx, pEntry->Aid);
 #endif /* CONFIG_AP_SUPPORT */
@@ -848,18 +762,6 @@ BOOLEAN MacTableDeleteEntry(RTMP_ADAPTER *pAd, USHORT wcid, UCHAR *pAddr)
 
 		if (MAC_ADDR_EQUAL(pEntry->Addr, pAddr))
 		{
-
-#ifdef WH_EZ_SETUP
-			if (IS_EZ_SETUP_ENABLED(pEntry->wdev)) {
-				pEntry->is_apcli = FALSE;
-
-#if defined (NEW_CONNECTION_ALGO) || defined (EZ_NETWORK_MERGE_SUPPORT)
-				ez_handle_peer_disconnection(pEntry->wdev, pEntry->Addr);		
-#endif
-				pEntry->easy_setup_enabled = FALSE;
-			}
-#endif /* WH_EZ_SETUP */
-		
 
 #if defined(CONFIG_AP_SUPPORT) && defined(CONFIG_DOT11V_WNM)
 			if (pAd->ApCfg.MBSSID[pEntry->func_tb_idx].WNMCtrl.ProxyARPEnable)
@@ -1001,30 +903,13 @@ BOOLEAN MacTableDeleteEntry(RTMP_ADAPTER *pAd, USHORT wcid, UCHAR *pAddr)
 				}
 				pEntry->Receive_EapolStart_EapRspId = 0;
 				pEntry->bWscCapable = FALSE;
-#ifdef WH_EVENT_NOTIFIER
-				pEntry->tx_state.CurrentState = WHC_STA_STATE_IDLE;
-				pEntry->rx_state.CurrentState = WHC_STA_STATE_IDLE;
-#endif /* WH_EVENT_NOTIFIER */
 			}
 #endif /* WSC_AP_SUPPORT */
 #endif /* CONFIG_AP_SUPPORT */
 
-#if defined(MBO_SUPPORT)
-			COPY_MAC_ADDR(TmpAddrForIndicate, pEntry->Addr);
-			bIndicateSendEvent = TRUE;
-#endif/* defined(RT_CFG80211_SUPPORT) || defined(MBO_SUPPORT) */
-#ifdef WH_EZ_SETUP	// Fix to avoid transmitting frames with an all-zero MAC address
-			if (!IS_EZ_SETUP_ENABLED(pEntry->wdev))
-			{
-#endif
-				//	NdisZeroMemory(pEntry, sizeof(MAC_TABLE_ENTRY));
-				NdisZeroMemory(pEntry->Addr, MAC_ADDR_LEN);
-#ifdef WH_EZ_SETUP
-			}
-#endif
-#ifdef FAST_DETECT_STA_OFF
-			NdisZeroMemory(&pEntry->ConCounters, sizeof(struct _COUNTER_CON));
-#endif
+
+			//   			NdisZeroMemory(pEntry, sizeof(MAC_TABLE_ENTRY));
+			NdisZeroMemory(pEntry->Addr, MAC_ADDR_LEN);
 			/* invalidate the entry */
 			tr_entry->PortSecured = WPA_802_1X_PORT_NOT_SECURED;			
 			SET_ENTRY_NONE(pEntry);
@@ -1033,16 +918,10 @@ BOOLEAN MacTableDeleteEntry(RTMP_ADAPTER *pAd, USHORT wcid, UCHAR *pAddr)
 			pAd->MacTab.Size--;
 
 			DBGPRINT(RT_DEBUG_TRACE, ("MacTableDeleteEntry1 - Total= %d\n", pAd->MacTab.Size));
-#ifdef R1KH_HARD_RETRY
-				RTMP_OS_EXIT_COMPLETION(&pEntry->ack_r1kh);
-#endif /* R1KH_HARD_RETRY */
 		}
 		else
 		{
 			DBGPRINT(RT_DEBUG_OFF, ("\n%s: Impossible Wcid = %d !!!!!\n", __FUNCTION__, wcid));
-#if defined(MBO_SUPPORT)
-			bIndicateSendEvent = FALSE;
-#endif/*defined(MBO_SUPPORT) */
 		}
 	}
 
@@ -1058,19 +937,6 @@ BOOLEAN MacTableDeleteEntry(RTMP_ADAPTER *pAd, USHORT wcid, UCHAR *pAddr)
 #endif /* DOT11_N_SUPPORT */
 		RTMP_UPDATE_PROTECT(pAd, 0, ALLN_SETPROTECT, TRUE, 0);
 	}
-#ifdef MBO_SUPPORT
-	/* mbo - indicate daemon to remve this sta */
-	{
-		MBO_EVENT_STA_DISASSOC evt_sta_disassoc;
-
-		COPY_MAC_ADDR(evt_sta_disassoc.mac_addr, TmpAddrForIndicate);
-		MboIndicateStaDisassocToDaemon(pAd, &evt_sta_disassoc, MBO_MSG_REMOVE_STA);
-	}
-#endif/* MBO_SUPPORT */
-#ifdef WAPP_SUPPORT
-		if ((wdev != NULL) && IS_ENTRY_CLIENT(pEntry))
-			wapp_send_cli_leave_event(pAd, RtmpOsGetNetIfIndex(wdev->if_dev), pAddr);
-#endif/* WAPP_SUPPORT */
 
 #ifdef CONFIG_AP_SUPPORT
 	/*APUpdateCapabilityAndErpIe(pAd);*/
@@ -1094,7 +960,7 @@ VOID MacTableReset(RTMP_ADAPTER *pAd, INT startWcid)
 	BOOLEAN Cancelled;    
 #ifdef CONFIG_AP_SUPPORT
 #ifdef RTMP_MAC_PCI
-	unsigned long	IrqFlags=0;
+	ULONG IrqFlags = 0;
 #endif /* RTMP_MAC_PCI */
 	UCHAR *pOutBuffer = NULL;
 	NDIS_STATUS NStatus;
@@ -1104,6 +970,9 @@ VOID MacTableReset(RTMP_ADAPTER *pAd, INT startWcid)
 	UCHAR apidx = MAIN_MBSSID;
 #endif /* CONFIG_AP_SUPPORT */
 	MAC_TABLE_ENTRY *pMacEntry;
+
+	if (!pAd)
+		return;
 
 	DBGPRINT(RT_DEBUG_TRACE, ("MacTableReset\n"));
 	/*NdisAcquireSpinLock(&pAd->MacTabLock);*/
@@ -1185,7 +1054,7 @@ VOID MacTableReset(RTMP_ADAPTER *pAd, INT startWcid)
 /*		NdisZeroMemory(&pAd->MacTab, sizeof(MAC_TABLE));*/
 		NdisZeroMemory(&pAd->MacTab.Size,
 							sizeof(MAC_TABLE)-
-							Offsetof(MAC_TABLE, Size));
+							offsetof(MAC_TABLE, Size));
 
 		InitializeQueueHeader(&pAd->MacTab.McastPsQueue);
 		/*NdisReleaseSpinLock(&pAd->MacTabLock);*/
@@ -1211,14 +1080,16 @@ MAC_TABLE_ENTRY *InsertMacRepeaterEntry(RTMP_ADAPTER *pAd, UCHAR *pAddr, UCHAR I
 		pApCliEntry = &pAd->ApCfg.ApCliTab[IfIdx];
 		pEntry->Aid = pApCliEntry->MacTabWCID + 1; // TODO: We need to record count of STAs
 		COPY_MAC_ADDR(pEntry->Addr, pApCliEntry->MlmeAux.Bssid);
+#ifdef DBG
 		printk("sn - InsertMacRepeaterEntry: Aid = %d\n", pEntry->Aid);
 		hex_dump("sn - InsertMacRepeaterEntry pEntry->Addr", pEntry->Addr, 6);
+#endif
 		/* Add this entry into ASIC RX WCID search table */
 		RTMP_STA_ENTRY_ADD(pAd, pEntry);
 		os_free_mem(NULL, pEntry);
 	}
 
-	return NULL;
+	return pEntry;
 }
 
 #endif /* MAC_REPEATER_SUPPORT */

@@ -171,14 +171,6 @@ extern UCHAR RateSwitchTableAdapt11G[];
 extern UCHAR RateSwitchTableAdapt11BG[];
 extern UCHAR RateSwitchTableAdapt11N1S[];
 extern UCHAR RateSwitchTableAdapt11N2S[];
-#ifdef MULTI_CLIENT_SUPPORT
-extern UCHAR RateSwitchTableAdapt11N1SForMultiClients[];
-extern UCHAR RateSwitchTableAdapt11N2SForMultiClients[];
-#endif
-#ifdef INTERFERENCE_RA_SUPPORT
-extern UCHAR RateSwitchTableAdapt11N1SForInterference[];
-extern UCHAR RateSwitchTableAdapt11N2SForInterference[];
-#endif
 extern UCHAR RateSwitchTableAdapt11N3S[];
 
 #define PER_THRD_ADJ			1
@@ -205,45 +197,12 @@ extern UCHAR RateTableVht2S_BW40[];
 									(pTable)==RateTableVht2S_BW20 ||\
 									(pTable)==RateTableVht2S_BW40)
 #else
-#ifdef MULTI_CLIENT_SUPPORT
-#ifdef INTERFERENCE_RA_SUPPORT
-#define ADAPT_RATE_TABLE(pTable)	((pTable)==RateSwitchTableAdapt11B || \
-									(pTable)==RateSwitchTableAdapt11G || \
-									(pTable)==RateSwitchTableAdapt11BG || \
-									(pTable)==RateSwitchTableAdapt11N1S || \
-									(pTable)==RateSwitchTableAdapt11N2S || \
-									(pTable)==RateSwitchTableAdapt11N1SForMultiClients ||\
-									(pTable)==RateSwitchTableAdapt11N2SForMultiClients ||\
-									(pTable)==RateSwitchTableAdapt11N1SForInterference ||\
-									(pTable)==RateSwitchTableAdapt11N2SForInterference ||\
-									(pTable)==RateSwitchTableAdapt11N3S)
-#elif MULTI_CLIENT_SUPPORT
-#define ADAPT_RATE_TABLE(pTable)	((pTable)==RateSwitchTableAdapt11B || \
-									(pTable)==RateSwitchTableAdapt11G || \
-									(pTable)==RateSwitchTableAdapt11BG || \
-									(pTable)==RateSwitchTableAdapt11N1S || \
-									(pTable)==RateSwitchTableAdapt11N2S || \
-									(pTable)==RateSwitchTableAdapt11N1SForMultiClients ||\
-									(pTable)==RateSwitchTableAdapt11N2SForMultiClients ||\
-									(pTable)==RateSwitchTableAdapt11N3S)
-#elif INTERFERENCE_RA_SUPPORT
-#define ADAPT_RATE_TABLE(pTable)	((pTable)==RateSwitchTableAdapt11B || \
-									(pTable)==RateSwitchTableAdapt11G || \
-									(pTable)==RateSwitchTableAdapt11BG || \
-									(pTable)==RateSwitchTableAdapt11N1S || \
-									(pTable)==RateSwitchTableAdapt11N2S || \
-									(pTable)==RateSwitchTableAdapt11N1SForInterference ||\
-									(pTable)==RateSwitchTableAdapt11N2SForInterference ||\
-									(pTable)==RateSwitchTableAdapt11N3S)
-#endif
-#else
 #define ADAPT_RATE_TABLE(pTable)	((pTable)==RateSwitchTableAdapt11B || \
 									(pTable)==RateSwitchTableAdapt11G || \
 									(pTable)==RateSwitchTableAdapt11BG || \
 									(pTable)==RateSwitchTableAdapt11N1S || \
 									(pTable)==RateSwitchTableAdapt11N2S || \
 									(pTable)==RateSwitchTableAdapt11N3S)
-#endif 
 #endif /* DOT11_VHT_AC */
 #endif /* NEW_RATE_ADAPT_SUPPORT */
 #endif /* DOT11_N_SUPPORT */
@@ -439,7 +398,7 @@ VOID MlmeSelectTxRateTable(
 	(__pAd)->rateAlg = __Alg;
 
 #ifdef NEW_RATE_ADAPT_SUPPORT
-UCHAR ra_get_lowest_rate(struct _RTMP_ADAPTER *pAd, struct _MAC_TABLE_ENTRY *pEntry);
+UCHAR ra_get_lowest_rate(struct _RTMP_ADAPTER *pAd, UCHAR *pTable);
 #endif /* NEW_RATE_ADAPT_SUPPORT */
 
 #endif /* __DRS_EXTR_H__ */

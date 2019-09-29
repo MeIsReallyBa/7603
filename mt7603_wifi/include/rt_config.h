@@ -38,20 +38,13 @@
 #include "rtmp_chip.h"
 #include "rtmp_timer.h"
 
-#ifdef WH_EZ_SETUP
-#include "easy_setup/ez_hooks.h"
-#endif
-
 
 #ifdef AGS_SUPPORT
 #include "ags.h"
 #endif /* AGS_SUPPORT */
-
-#ifdef CONFIG_AP_SUPPORT
 #ifdef BAND_STEERING
 #include "band_steering_def.h"
 #endif /* BAND_STEERING */
-#endif
 #ifdef CONFIG_FPGA_MODE
 #include "fpga/fpga_ctl.h"
 #endif
@@ -63,9 +56,6 @@
 #include "crypt_aes.h"
 #include "crypt_arc4.h"
 /*#include "rtmp_cmd.h" */
-#ifdef ROUTING_TAB_SUPPORT
-#include "routing_tab.h"
-#endif /* ROUTING_TAB_SUPPORT */
 #include "rtmp.h"
 #include "wpa.h"
 #include "chlist.h"
@@ -122,13 +112,6 @@
 #include "client_wds.h"
 #endif /* CLIENT_WDS */
 #endif /* CONFIG_AP_SUPPORT */
-#ifdef MWDS
-#include "mwds.h"
-#endif /* CONFIG_AP_SUPPORT */
-
-#ifdef WH_EVENT_NOTIFIER
-#include "event_notifier.h"
-#endif /* WH_EVENT_NOTIFIER */
 
 #ifdef MAT_SUPPORT
 #include "mat.h"
@@ -160,17 +143,6 @@
 #error "For supporting QA GUI, please set HAS_ATE=y and HAS_QA_SUPPORT=y."
 #endif /* CONFIG_ATE */
 #endif /* CONFIG_QA */
-
-
-
-#ifdef WAPI_SUPPORT
-#include "wapi.h"
-#endif /* WAPI_SUPPORT */
-
-#ifdef DOT11K_RRM_SUPPORT
-#include "rrm.h"
-#endif /* DOT11K_RRM_SUPPORT */
-
 
 #if defined(AP_WSC_INCLUDED) || defined(STA_WSC_INCLUDED)
 #define WSC_INCLUDED
@@ -229,7 +201,6 @@
 
 
 
-#include "vendor.h"
 #ifdef DOT11_VHT_AC
 #include "vht.h"
 #endif /* DOT11_VHT_AC */
@@ -289,30 +260,6 @@
 #ifdef CONFIG_HOTSPOT
 #include "hotspot.h"
 #endif
-
-#ifdef CONFIG_PUSH_SUPPORT
-#include "event_notifier.h"
-#endif
-#ifdef WH_EZ_SETUP
-//#include "easy_setup/ez_hooks.h"
-#include "easy_setup/mt7603_driver_specific_func.h"
-#include "easy_setup/ez_hooks_proto.h"
-#include "easy_setup/mt7603_chip_ops_api.h"
-//#include "easy_setup/mt7603_chip_ops.h"
-#endif /* WH_EZ_SETUP */
-
-#ifdef MBO_SUPPORT
-#include "mbo.h"
-#endif/* MBO_SUPPORT */
-
-#ifdef MAP_SUPPORT
-#include "map.h"
-#endif
-
-#ifdef WAPP_SUPPORT
-#include "wapp/wapp_cmm_type.h"
-#include "wapp/wapp.h"
-#endif/* WAPP_SUPPORT */
 
 #endif	/* __RT_CONFIG_H__ */
 

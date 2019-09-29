@@ -82,9 +82,6 @@
 #define MAX_LEN_OF_RSNIE         	255
 #define MIN_LEN_OF_RSNIE         	18
 #define MAX_LEN_GTK					32
-#ifdef WH_EZ_SETUP
-#define LEN_MAX_GTK					32	
-#endif
 #define MIN_LEN_GTK					5
 
 #define LEN_PMK						32

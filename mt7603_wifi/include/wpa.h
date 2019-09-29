@@ -145,7 +145,6 @@
 
 #if defined(CONFIG_AP_SUPPORT) && defined(CONFIG_STA_SUPPORT)
 #define WPA_GET_BSS_NUM(_pAd)		(((_pAd)->OpMode == OPMODE_AP) ? (_pAd)->ApCfg.BssidNum : 1)
-#ifdef APCLI_SUPPORT
 #define WPA_GET_GROUP_CIPHER(_pAd, _pEntry, _cipher)					\
 	{																	\
 	_cipher = Ndis802_11WEPDisabled;								\
@@ -160,42 +159,22 @@
 		else															\
 			_cipher = (_pAd)->StaCfg.GroupCipher;						\
 	}
-#else
-#define WPA_GET_GROUP_CIPHER(_pAd, _pEntry, _cipher)					\
-	{												\
-	_cipher = Ndis802_11WEPDisabled;								\
-		if ((_pAd)->OpMode == OPMODE_AP) {							\
-			if ((_pEntry)->func_tb_idx < (_pAd)->ApCfg.BssidNum)			\
-				_cipher = (_pAd)->ApCfg.MBSSID[_pEntry->func_tb_idx].wdev.GroupKeyWepStatus;\
-		}											\
-		else											\
-			_cipher = (_pAd)->StaCfg.GroupCipher;						\
-	}
-#endif
 
 #define WPA_BSSID(_pAd, _apidx) 	(((_pAd)->OpMode == OPMODE_AP) ?\
 									(_pAd)->ApCfg.MBSSID[_apidx].Bssid :\
 									(_pAd)->CommonCfg.Bssid)
 #elif defined(CONFIG_AP_SUPPORT)
 #define WPA_GET_BSS_NUM(_pAd)		(_pAd)->ApCfg.BssidNum
-#ifdef APCLI_SUPPORT
 #define WPA_GET_GROUP_CIPHER(_pAd, _pEntry, _cipher)				\
 	{																\
-		_cipher = Ndis802_11WEPDisabled;							\
-		if (IS_ENTRY_APCLI(_pEntry) &&								\
+	_cipher = Ndis802_11WEPDisabled;							\
+	if (IS_ENTRY_APCLI(_pEntry) && 								\
 			((_pEntry)->func_tb_idx < MAX_APCLI_NUM))			\
 			_cipher = (_pAd)->ApCfg.ApCliTab[(_pEntry)->func_tb_idx].GroupCipher;	\
 		else if ((_pEntry)->func_tb_idx < (_pAd)->ApCfg.BssidNum)			\
 			_cipher = (_pAd)->ApCfg.MBSSID[_pEntry->func_tb_idx].wdev.GroupKeyWepStatus;\
 	}
-#else
-#define WPA_GET_GROUP_CIPHER(_pAd, _pEntry, _cipher)				\
-	{												\
-		_cipher = Ndis802_11WEPDisabled;							\
-		if ((_pEntry)->func_tb_idx < (_pAd)->ApCfg.BssidNum)			\
-			_cipher = (_pAd)->ApCfg.MBSSID[_pEntry->func_tb_idx].wdev.GroupKeyWepStatus;\
-	}
-#endif
+
 #define WPA_BSSID(_pAd, _apidx) 	(_pAd)->ApCfg.MBSSID[_apidx].Bssid
 
 #elif defined(CONFIG_STA_SUPPORT)
@@ -523,5 +502,7 @@ BOOLEAN RTMPSoftDecryptCCMP(
 VOID CCMP_test_vector(
 	IN PRTMP_ADAPTER pAd,
 	IN INT input);
+
+void inc_byte_array(UCHAR *counter, int len);
 
 #endif

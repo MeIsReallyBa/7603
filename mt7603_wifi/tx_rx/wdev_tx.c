@@ -50,12 +50,9 @@ INT wdev_tx_pkts(NDIS_HANDLE dev_hnd, PPNDIS_PACKET pkt_list, UINT pkt_cnt, stru
 {
 	RTMP_ADAPTER *pAd = (RTMP_ADAPTER *)dev_hnd;
 	PNDIS_PACKET pPacket;
-	BOOLEAN allowToSend;
+	BOOLEAN allowToSend = FALSE;
 	UCHAR wcid = MAX_LEN_OF_MAC_TABLE;
 	UINT Index;
-#ifdef MWDS
-	UCHAR *pSrcBufVA = NULL;
-#endif
 #ifdef CONFIG_FPGA_MODE
 	BOOLEAN force_tx;
 #endif /* CONFIG_FPGA_MODE */
@@ -72,10 +69,6 @@ INT wdev_tx_pkts(NDIS_HANDLE dev_hnd, PPNDIS_PACKET pkt_list, UINT pkt_cnt, stru
 		{
 			/* Drop send request since hardware is in reset state */
 			RELEASE_NDIS_PACKET(pAd, pPacket, NDIS_STATUS_FAILURE);
-#ifdef NEW_IXIA_METHOD
-			if (IS_EXPECTED_LENGTH(RTPKT_TO_OSPKT(pPacket)->len))
-				pAd->tr_ststic.tx[DROP_HW_RESET]++;
-#endif
 			continue;
 		}
 
@@ -93,7 +86,7 @@ INT wdev_tx_pkts(NDIS_HANDLE dev_hnd, PPNDIS_PACKET pkt_list, UINT pkt_cnt, stru
 
 
 
-		if (((wdev->allow_data_tx == TRUE) || (pAd->BSendBMToAir)
+		if ((likely((wdev->allow_data_tx == TRUE)) 
 #ifdef CONFIG_FPGA_MODE
 			|| (force_tx == TRUE)
 #endif /* CONFIG_FPGA_MODE */
@@ -116,87 +109,54 @@ INT wdev_tx_pkts(NDIS_HANDLE dev_hnd, PPNDIS_PACKET pkt_list, UINT pkt_cnt, stru
 		}
 #endif /* CONFIG_FPGA_MODE */
 
-		if (allowToSend == TRUE)
+		if (likely(allowToSend == TRUE))
 		{
-			RTMP_SET_PACKET_WCID(pPacket, wcid);
 			RTMP_SET_PACKET_WDEV(pPacket, wdev->wdev_idx);
-			NDIS_SET_PACKET_STATUS(pPacket, NDIS_STATUS_PENDING);
-			pAd->RalinkCounters.PendingNdisPacketCount++;
-			
 			/*
 				WIFI HNAT need to learn packets going to which interface from skb cb setting.
 				@20150325
 			*/
 #if defined(BB_SOC) && defined(BB_RA_HWNAT_WIFI)
-	        if (ra_sw_nat_hook_tx != NULL) 
+			if (ra_sw_nat_hook_tx != NULL) 
 			{
-	#ifdef TCSUPPORT_MT7510_FE
-	            if (ra_sw_nat_hook_tx(pPacket, NULL, FOE_MAGIC_WLAN) == 0) 			
-	#else
-	            if (ra_sw_nat_hook_tx(pPacket, 1) == 0) 			
-	#endif
-				{
-	                RELEASE_NDIS_PACKET(pAd, pPacket, NDIS_STATUS_FAILURE);
-	                    return 0;
-	            }
-	        }
+#ifdef TCSUPPORT_MT7510_FE
+				if (ra_sw_nat_hook_tx(pPacket, NULL, FOE_MAGIC_WLAN) == 0)
+#else
+				if (ra_sw_nat_hook_tx(pPacket, 1) == 0)
 #endif
-
-#ifdef CONFIG_RAETH
-#if !defined(CONFIG_RA_NAT_NONE)
-			if(ra_sw_nat_hook_tx!= NULL)
-			{
-				unsigned long flags;
-		
-				RTMP_INT_LOCK(&pAd->page_lock, flags);
-				ra_sw_nat_hook_tx(pPacket);
-				RTMP_INT_UNLOCK(&pAd->page_lock, flags);
+				{
+					RELEASE_NDIS_PACKET(pAd, pPacket, NDIS_STATUS_FAILURE);
+					return 0;
+				}
 			}
 #endif
-#endif /* CONFIG_RAETH */
 
-			if (wdev->tx_pkt_handle)
+#if defined (CONFIG_RA_HW_NAT) || defined (CONFIG_RA_HW_NAT_MODULE)
+#if !defined (CONFIG_RA_NAT_NONE)
+			if (ra_sw_nat_hook_tx != NULL)
 			{
-#ifndef MWDS
-				wdev->tx_pkt_handle(pAd, pPacket);
-#else
-#ifdef CONFIG_AP_SUPPORT
-				IF_DEV_CONFIG_OPMODE_ON_AP(pAd)
-				{
-					if (wdev->wdev_type != WDEV_TYPE_STA) {
-						pSrcBufVA = GET_OS_PKT_DATAPTR(pPacket);
-						if (pSrcBufVA &&
-								IS_BROADCAST_MAC_ADDR(pSrcBufVA)) {
-							MWDSSendClonePacket(pAd, wdev->func_idx, pPacket, NULL);
-						} else if (pSrcBufVA && IS_MULTICAST_MAC_ADDR(pSrcBufVA)
-#ifdef IGMP_SNOOP_SUPPORT
-								&& (!pAd->ApCfg.IgmpSnoopEnable)
+				ra_sw_nat_hook_tx(pPacket, 0);
+			}
 #endif
-							) {
-							MWDSSendClonePacket(pAd, wdev->func_idx, pPacket, NULL);
-						} else {
-							DBGPRINT(RT_DEBUG_TRACE,
-								("The pkt is uc or IGMP is on, no need MWDS CLONE\n"));
-						}
-					}
-				}
-#endif	
+#endif
+
+			if (wdev->tx_pkt_handle) {
+				RTMP_SET_PACKET_WCID(pPacket, wcid);
+				NDIS_SET_PACKET_STATUS(pPacket, NDIS_STATUS_PENDING);
+				pAd->RalinkCounters.PendingNdisPacketCount++;
 				wdev->tx_pkt_handle(pAd, pPacket);
-#endif /* MWDS */
-			} else { 
+			}
+			else
+			{
 				DBGPRINT(RT_DEBUG_ERROR, ("%s():tx_pkt_handle not assigned!\n", __FUNCTION__));
 				RELEASE_NDIS_PACKET(pAd, pPacket, NDIS_STATUS_FAILURE);
 			}
-		} else {
-			RELEASE_NDIS_PACKET(pAd, pPacket, NDIS_STATUS_FAILURE);
-#ifdef NEW_IXIA_METHOD
-			if (IS_EXPECTED_LENGTH(RTPKT_TO_OSPKT(pPacket)->len))
-				pAd->tr_ststic.tx[INVALID_PKT_LEN]++;
-#endif
 		}
+		else
+			RELEASE_NDIS_PACKET(pAd, pPacket, NDIS_STATUS_FAILURE);
 	}
 
-	RTMPDeQueuePacket(pAd, FALSE, NUM_OF_TX_RING, WCID_ALL, MAX_TX_PROCESS);
+	RTMPDeQueuePacket(pAd, FALSE, WMM_NUM_OF_AC, WCID_ALL, MAX_TX_PROCESS);
 
 	return 0;
 }
